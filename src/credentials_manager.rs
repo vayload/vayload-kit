@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chacha20poly1305::{
-    aead::{Aead, KeyInit, OsRng},
     AeadCore, ChaCha20Poly1305, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
 use serde::{Deserialize, Serialize};
 use std::fs;

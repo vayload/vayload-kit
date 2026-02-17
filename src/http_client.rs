@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use reqwest::blocking::{multipart, Client, Response};
-use serde::de::DeserializeOwned;
+use reqwest::blocking::{Client, Response, multipart};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::time::Duration;
 use std::{io, sync::Arc};
 use thiserror::Error;

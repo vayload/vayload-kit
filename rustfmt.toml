@@ -1,47 +1,19 @@
 max_width = 120
-edition = "2021"
+edition = "2024"
 newline_style = "Unix"
 use_small_heuristics = "Default"
 hard_tabs = false
 tab_spaces = 4
-indent_style = "Block"
 
 reorder_imports = true
 reorder_modules = true
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"
-
-fn_args_layout = "Tall"
-fn_single_line = false
-where_single_line = false
-
-control_brace_style = "AlwaysSameLine"
-brace_style = "SameLineWhere"
-empty_item_single_line = true
+fn_params_layout = "Tall"
 
 array_width = 120
 chain_width = 120
 struct_lit_width = 60
 struct_variant_width = 60
-enum_discrim_align_threshold = 20
-
-wrap_comments = true
-comment_width = 120
-normalize_comments = true
-normalize_doc_attributes = true
-format_code_in_doc_comments = true
 
 match_block_trailing_comma = true
-match_arm_blocks = true
 match_arm_leading_pipes = "Preserve"
-
-format_strings = false
-format_macro_matchers = true
-format_macro_bodies = true
-overflow_delimited_expr = true
 remove_nested_parens = true
-space_before_colon = false
-space_after_colon = true
-spaces_around_ranges = false
-trailing_comma = "Vertical"
-trailing_semicolon = true

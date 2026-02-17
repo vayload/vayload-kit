@@ -49,7 +49,7 @@ test: ## Run tests
 	@$(CARGO) test
 
 fmt: ## Format code
-	@$(CARGO) fmt
+	@$(CARGO) fmt --all
 
 lint: ## Run clippy with warnings denied
 	@$(CARGO) clippy --all-targets --all-features -- -D warnings
