@@ -104,7 +104,7 @@ pub fn create_zip(dir: &Path) -> Result<(Vec<u8>, Vec<String>, String)> {
         walker.add_ignore_file(&gitignore);
     }
 
-    println!("\n{}", "Files included:");
+    println!("\nFiles included:");
 
     for entry in walker {
         let path = entry.path();

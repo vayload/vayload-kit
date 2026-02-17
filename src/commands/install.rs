@@ -21,7 +21,7 @@ pub fn install_plugin(package: &str, plugins_dir: &str, http_client: &HttpClient
     let plugins_path = Path::new(plugins_dir);
     fs::create_dir_all(plugins_path).context("Failed to create plugins directory")?;
 
-    let (zip_data, meta) = download_plugin(&id, version.as_deref(), &http_client)?;
+    let (zip_data, meta) = download_plugin(&id, version.as_deref(), http_client)?;
 
     println!(
         "{} Downloaded {}@{} ({})",

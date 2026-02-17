@@ -54,6 +54,13 @@ impl Default for PluginManifest {
     }
 }
 
+impl PluginManifest {
+    pub fn set_name(&mut self, name: String) {
+        self.name = name.clone().to_lowercase().replace(" ", "-");
+        self.display_name = name;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
     pub r#type: String,
@@ -78,17 +85,11 @@ impl Default for Engines {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Permissions {
     pub filesystem: Option<FileSystemPermission>,
     pub network: Option<NetworkPermission>,
     pub limits: Option<Limits>,
-}
-
-impl Default for Permissions {
-    fn default() -> Self {
-        Self { filesystem: None, network: None, limits: None }
-    }
 }
 
 impl Permissions {
@@ -114,21 +115,16 @@ impl Default for FileSystemPermission {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileSystemScope {
     ReadOnly,
     ReadWrite,
+    #[default]
     None,
 }
 
-impl Default for FileSystemScope {
-    fn default() -> Self {
-        FileSystemScope::None
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NetworkPermission {
     pub allow_outbound: Vec<String>,
     pub allow_inbound: bool,
@@ -137,12 +133,6 @@ pub struct NetworkPermission {
 impl NetworkPermission {
     pub fn new(allow_outbound: Vec<String>, allow_inbound: bool) -> Self {
         Self { allow_outbound, allow_inbound }
-    }
-}
-
-impl Default for NetworkPermission {
-    fn default() -> Self {
-        Self { allow_outbound: Vec::new(), allow_inbound: false }
     }
 }
 
@@ -180,16 +170,11 @@ impl Default for PluginConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum PluginAccess {
+    #[default]
     Public,
     Private,
-}
-
-impl Default for PluginAccess {
-    fn default() -> Self {
-        Self::Public
-    }
 }
 
 impl PluginAccess {

@@ -162,7 +162,7 @@ impl CredentialManager {
             Ok(key)
         } else {
             let key = ChaCha20Poly1305::generate_key(&mut OsRng);
-            fs::write(&path, key.to_vec())?;
+            fs::write(&path, key)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

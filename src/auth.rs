@@ -14,8 +14,9 @@ use url::Url;
 use crate::credentials_manager::{CredentialManager, RawCredentials};
 use crate::http_client::HttpClient;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum ClientType {
+    #[default]
     Web,
     Cli,
 }
@@ -28,12 +29,6 @@ impl ClientType {
             "" => Ok(ClientType::Web),
             _ => anyhow::bail!("Invalid client type"),
         }
-    }
-}
-
-impl Default for ClientType {
-    fn default() -> Self {
-        ClientType::Web
     }
 }
 
@@ -449,7 +444,7 @@ impl AuthCommands {
             ));
         }
 
-        let whoami_response = self.http_client.get::<User>(&format!("/auth/me"))?;
+        let whoami_response = self.http_client.get::<User>("/auth/me")?;
 
         println!("{}", "Current User:".green().bold());
         self.print_user_info(&whoami_response);

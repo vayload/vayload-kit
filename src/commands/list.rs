@@ -32,8 +32,9 @@ pub fn list_dependencies(depth: Option<usize>) -> Result<()> {
 fn print_dependencies_section(manifest: &serde_json::Value, key: &str, prefix: &str, max_depth: usize) -> Result<bool> {
     let mut has_any = false;
 
+    #[allow(clippy::collapsible_if)]
     if let Some(deps) = manifest.get(key).and_then(|d| d.as_object()) {
-        if !deps.is_empty() {
+        if deps.is_empty() {
             let title = if prefix.is_empty() {
                 "dependencies".to_string()
             } else {
@@ -72,6 +73,7 @@ fn print_transitive_deps(package: &str, depth: usize, indent: &str) {
         return;
     }
 
+    #[allow(clippy::collapsible_if)]
     if let Ok(content) = fs::read_to_string(lock_path) {
         if let Ok(lock) = json5::from_str::<serde_json::Value>(&content) {
             if let Some(packages) = lock.get("packages").and_then(|p| p.as_array()) {

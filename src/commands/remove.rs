@@ -17,6 +17,7 @@ pub fn remove_dependency(package: &str) -> Result<()> {
 
     let mut removed = false;
 
+    #[allow(clippy::collapsible_if)]
     if let Some(deps) = manifest.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
         if deps.remove(package).is_some() {
             removed = true;
@@ -24,6 +25,7 @@ pub fn remove_dependency(package: &str) -> Result<()> {
         }
     }
 
+    #[allow(clippy::collapsible_if)]
     if let Some(dev_deps) = manifest.get_mut("dev-dependencies").and_then(|d| d.as_object_mut()) {
         if dev_deps.remove(package).is_some() {
             removed = true;

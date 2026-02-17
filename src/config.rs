@@ -47,7 +47,7 @@ impl AppConfig {
 
             let settings = config::Config::builder().add_source(config::File::from(path)).build()?;
 
-            return Ok(settings.try_deserialize()?);
+            Ok(settings.try_deserialize()?)
         }
 
         #[cfg(not(feature = "full"))]
@@ -56,7 +56,7 @@ impl AppConfig {
                 .add_source(config::File::from_str(DEFAULT_CONFIG, config::FileFormat::Toml))
                 .build()?;
 
-            return Ok(settings.try_deserialize()?);
+            Ok(settings.try_deserialize()?)
         }
     }
 }

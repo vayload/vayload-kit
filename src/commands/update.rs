@@ -38,6 +38,7 @@ fn update_single_package(manifest: &mut serde_json::Value, package: &str, http_c
 
     let mut updated = false;
 
+    #[allow(clippy::collapsible_if)]
     if let Some(deps) = manifest.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
         if let Some(dep) = deps.get_mut(&id) {
             let old_version = dep.as_str().unwrap_or("*").to_string();
@@ -53,6 +54,7 @@ fn update_single_package(manifest: &mut serde_json::Value, package: &str, http_c
         }
     }
 
+    #[allow(clippy::collapsible_if)]
     if let Some(dev_deps) = manifest.get_mut("dev-dependencies").and_then(|d| d.as_object_mut()) {
         if let Some(dep) = dev_deps.get_mut(&id) {
             let old_version = dep.as_str().unwrap_or("*").to_string();

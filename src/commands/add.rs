@@ -29,7 +29,7 @@ pub fn add_dependency(package: &str, is_dev: bool, http_client: &HttpClient) -> 
     let mut manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
 
     let deps_key = if is_dev { "dev-dependencies" } else { "dependencies" };
-    if !manifest.get(deps_key).is_some() {
+    if manifest.get(deps_key).is_none() {
         manifest[deps_key] = serde_json::json!({});
     }
 

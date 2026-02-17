@@ -19,16 +19,14 @@ pub fn init_project(_yes: bool) -> Result<()> {
 
     let description: String = Input::new()
         .with_prompt("Description")
-        .default(format!("A Vayload plugin"))
+        .default("A Vayload plugin".to_string())
         .interact_text()
         .context("Failed to read description")?;
 
     let author: String = Input::new().with_prompt("Author").interact_text().context("Failed to read author")?;
 
     let mut project = PluginManifest::default();
-    project.name = name.clone().to_lowercase().replace(" ", "-");
-    project.display_name = name.clone();
-    project.version = "0.1.0".to_string();
+    project.set_name(name.clone());
     project.description = description.clone();
     project.author = author;
     project.permissions = Some(Permissions::new(
@@ -52,8 +50,7 @@ pub fn init_project(_yes: bool) -> Result<()> {
     let gitignore_content = "target/\n*.lock\n.vk/\n.env\n";
     fs::write(current_dir.join(".vkignore"), gitignore_content).context("Failed to write .vkignore")?;
 
-    let entry_content = format!(
-        r#"
+    let entry_content = r#"
        	--- @type HttpClient
         local http = require("vayload:http")
 
@@ -62,7 +59,8 @@ pub fn init_project(_yes: bool) -> Result<()> {
             print(response.body)
         end
         "#
-    );
+    .to_string();
+
     fs::write(src_dir.join("src/main.lua"), entry_content).context("Failed to write entry file")?;
 
     println!("\n{}", "✅ Project initialized successfully!".green().bold());

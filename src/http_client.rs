@@ -20,7 +20,7 @@ pub enum ClientError {
     Io(#[from] io::Error),
 
     #[error("{message}")]
-    Api { message: String, payload: ErrorResponse },
+    Api { message: String, payload: Box<ErrorResponse> },
 }
 
 type AuthFn = Arc<dyn Fn() -> Option<String> + Send + Sync>;
@@ -60,10 +60,10 @@ impl HttpClient {
     }
 
     fn with_auth(&self, rb: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
-        if let Some(auth_fn) = &self.auth_fn {
-            if let Some(token) = auth_fn() {
-                return rb.bearer_auth(token);
-            }
+        if let Some(auth_fn) = &self.auth_fn
+            && let Some(token) = auth_fn()
+        {
+            return rb.bearer_auth(token);
         }
         rb
     }
@@ -80,9 +80,12 @@ impl HttpClient {
         } else {
             let body = response.text()?;
 
-            let parsed: ErrorResponse = serde_json::from_str(&body).map_err(|e| ClientError::Serialization(e))?; // Manejo explícito si falla el parseo
+            let parsed: ErrorResponse = serde_json::from_str(&body).map_err(ClientError::Serialization)?;
 
-            Err(ClientError::Api { message: parsed.error.message.clone(), payload: parsed })
+            Err(ClientError::Api {
+                message: parsed.error.message.clone(),
+                payload: Box::new(parsed),
+            })
         }
     }
 
@@ -226,7 +229,10 @@ impl HttpClient {
             Ok(data)
         } else {
             let parsed: ErrorResponse = serde_json::from_str(&body)?;
-            Err(ClientError::Api { message: parsed.error.message.clone(), payload: parsed })
+            Err(ClientError::Api {
+                message: parsed.error.message.clone(),
+                payload: Box::new(parsed),
+            })
         }
     }
 }

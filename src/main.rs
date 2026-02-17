@@ -136,13 +136,13 @@ enum Commands {
 }
 
 fn main() {
-    println!("");
+    println!();
     if let Err(err) = run() {
         eprintln!("{} {}\n", "error:".red().bold(), err);
         std::process::exit(1);
     }
 
-    println!("");
+    println!();
 }
 
 fn run() -> Result<()> {
@@ -192,7 +192,7 @@ fn setup_client(config: &AppConfig) -> Result<HttpClient> {
     {
         let km = Arc::new(CredentialManager::new()?);
         let registry_url = config.server.registry_url.clone();
-        return setup_interactive_http_client(registry_url, km);
+        setup_interactive_http_client(registry_url, km)
     }
 
     #[cfg(not(feature = "full"))]
@@ -202,7 +202,7 @@ fn setup_client(config: &AppConfig) -> Result<HttpClient> {
         let token =
             std::env::var("VK_API_TOKEN").context("VK_API_TOKEN environment variable is required for CI/CD mode")?;
 
-        return HttpClient::new_with_token(config.server.registry_url.clone(), token);
+        HttpClient::new_with_token(config.server.registry_url.clone(), token)
     }
 }
 

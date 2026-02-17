@@ -1,6 +1,6 @@
 [package]
 name = "vayload-kit"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2024"
 authors = ["Alex Zweiter <szweiter@gmail.com>"]
 description = "CLI tool for developing and publishing plugins for Vayload CMS"
