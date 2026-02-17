@@ -1,0 +1,111 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+permissions:
+    contents: write
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    test:
+        name: Tests & Lints
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy, rustfmt
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+
+            - name: Format check
+              run: cargo fmt --all -- --check
+
+            - name: Clippy
+              run: cargo clippy --all-targets --all-features -- -D warnings
+
+            - name: Tests
+              run: cargo test --all-features
+
+    build:
+        name: Build binaries
+        needs: test
+        runs-on: ${{ matrix.os }}
+
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                    - os: macos-latest
+                      target: x86_64-apple-darwin
+                    - os: windows-latest
+                      target: x86_64-pc-windows-msvc
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+
+            - name: Add target
+              run: rustup target add ${{ matrix.target }}
+
+            - name: Build vk (full)
+              run: cargo build --release --bin vk --features full --target ${{ matrix.target }}
+
+            - name: Build vk-ci (minimal)
+              run: cargo build --release --bin vk-ci --no-default-features --features minimal --target ${{ matrix.target }}
+
+            - name: Prepare artifacts (Linux/macOS)
+              if: runner.os != 'Windows'
+              run: |
+                  mkdir dist
+                  cp target/${{ matrix.target }}/release/vk dist/vk-${{ matrix.target }}
+                  cp target/${{ matrix.target }}/release/vk-ci dist/vk-ci-${{ matrix.target }}
+                  strip dist/* || true
+
+            - name: Prepare artifacts (Windows)
+              if: runner.os == 'Windows'
+              run: |
+                  mkdir dist
+                  copy target\${{ matrix.target }}\release\vk.exe dist\vk-${{ matrix.target }}.exe
+                  copy target\${{ matrix.target }}\release\vk-ci.exe dist\vk-ci-${{ matrix.target }}.exe
+
+            - name: Generate checksums
+              if: runner.os != 'Windows'
+              run: |
+                  cd dist
+                  sha256sum * > checksums-${{ matrix.target }}.txt
+
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: ${{ matrix.target }}
+                  path: dist/*
+
+    release:
+        name: Create Release
+        needs: build
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Download artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: dist
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: dist/**/*

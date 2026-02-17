@@ -1,0 +1,42 @@
+name: Publish Plugin (VK - curl)
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            plugin_path:
+                description: "Path to plugin directory"
+                required: true
+                default: "./plugin"
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Download VK binary
+              run: |
+                  curl -L -o vk \
+                    https://github.com/alex-zweiter/vayload-kit/releases/latest/download/vk-linux-amd64
+                  chmod +x vk
+                  sudo mv vk /usr/local/bin/vk
+
+            - name: Publish plugin
+              env:
+                  VK_API_TOKEN: ${{ secrets.VK_API_TOKEN }}
+                  VK_REGISTRY_URL: ${{ vars.VK_REGISTRY_URL }}
+              run: |
+                  vk publish ${{ github.event.inputs.plugin_path || './plugin' }}
+
+            - name: Success notification
+              if: success()
+              run: echo "✅ Plugin published successfully!"
+
+            - name: Failure notification
+              if: failure()
+              run: echo "❌ Plugin publish failed!"

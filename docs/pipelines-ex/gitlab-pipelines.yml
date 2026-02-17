@@ -1,0 +1,53 @@
+stages:
+    - build
+    - publish
+
+variables:
+    PLUGIN_REGISTRY_URL: "https://registry.example.com/api/v1"
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+cache:
+    paths:
+        - .cargo/
+        - target/
+
+# Build the plugin-cli tool
+build-cli:
+    stage: build
+    image: rust:latest
+    script:
+        - cd plugin-cli-rust
+        - cargo build --release
+        - strip target/release/plugin
+    artifacts:
+        paths:
+            - plugin-cli-rust/target/release/plugin
+        expire_in: 1 hour
+
+# Publish plugin on tag
+publish-plugin:
+    stage: publish
+    image: rust:latest
+    dependencies:
+        - build-cli
+    script:
+        - chmod +x plugin-cli-rust/target/release/plugin
+        - ./plugin-cli-rust/target/release/plugin publish ./plugin --api-key $PLUGIN_API_KEY --registry $PLUGIN_REGISTRY_URL
+    only:
+        - tags
+    variables:
+        PLUGIN_API_KEY: $PLUGIN_API_KEY
+
+# Manual publish job
+publish-plugin-manual:
+    stage: publish
+    image: rust:latest
+    dependencies:
+        - build-cli
+    script:
+        - chmod +x plugin-cli-rust/target/release/plugin
+        - ./plugin-cli-rust/target/release/plugin publish $PLUGIN_PATH --api-key $PLUGIN_API_KEY --registry $PLUGIN_REGISTRY_URL
+    when: manual
+    variables:
+        PLUGIN_API_KEY: $PLUGIN_API_KEY
+        PLUGIN_PATH: "./plugin"
