@@ -10,6 +10,8 @@ permissions:
 
 env:
     CARGO_TERM_COLOR: always
+    APP_NAME: vk
+    VERSION: ${{ github.ref_name }}
 
 jobs:
     test:
@@ -67,26 +69,35 @@ jobs:
             - name: Build vk-ci (minimal)
               run: cargo build --release --bin vk-ci --no-default-features --features minimal --target ${{ matrix.target }}
 
-            - name: Prepare artifacts (Linux/macOS)
+            # ---------- Linux / macOS ----------
+            - name: Package (Unix)
               if: runner.os != 'Windows'
               run: |
                   mkdir dist
-                  cp target/${{ matrix.target }}/release/vk dist/vk-${{ matrix.target }}
-                  cp target/${{ matrix.target }}/release/vk-ci dist/vk-ci-${{ matrix.target }}
+
+                  cp target/${{ matrix.target }}/release/vk \
+                     dist/${APP_NAME}-${VERSION}-${{ matrix.target }}
+
+                  cp target/${{ matrix.target }}/release/vk-ci \
+                     dist/${APP_NAME}-ci-${VERSION}-${{ matrix.target }}
+
                   strip dist/* || true
 
-            - name: Prepare artifacts (Windows)
-              if: runner.os == 'Windows'
-              run: |
-                  mkdir dist
-                  copy target\${{ matrix.target }}\release\vk.exe dist\vk-${{ matrix.target }}.exe
-                  copy target\${{ matrix.target }}\release\vk-ci.exe dist\vk-ci-${{ matrix.target }}.exe
-
-            - name: Generate checksums
-              if: runner.os != 'Windows'
-              run: |
                   cd dist
-                  sha256sum * > checksums-${{ matrix.target }}.txt
+                  sha256sum * > checksums-${VERSION}-${{ matrix.target }}.txt
+
+            # ---------- Windows ----------
+            - name: Package (Windows)
+              if: runner.os == 'Windows'
+              shell: powershell
+              run: |
+                  New-Item -ItemType Directory -Force -Path dist
+
+                  Copy-Item target\${{ matrix.target }}\release\vk.exe `
+                    dist\${{ env.APP_NAME }}-${{ env.VERSION }}-${{ matrix.target }}.exe
+
+                  Copy-Item target\${{ matrix.target }}\release\vk-ci.exe `
+                    dist\${{ env.APP_NAME }}-ci-${{ env.VERSION }}-${{ matrix.target }}.exe
 
             - name: Upload artifacts
               uses: actions/upload-artifact@v4
@@ -95,7 +106,7 @@ jobs:
                   path: dist/*
 
     release:
-        name: Create Release
+        name: Create GitHub Release
         needs: build
         runs-on: ubuntu-latest
 
