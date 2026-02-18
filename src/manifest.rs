@@ -4,6 +4,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub const MANIFEST_FILENAME: &str = "plugin.json5";
+pub const VKIGNORE_FILENAME: &str = ".vkignore";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub name: String,

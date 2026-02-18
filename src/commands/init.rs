@@ -1,29 +1,59 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::Input;
-use std::fs;
+use std::{fs, path::Path};
 
-use crate::manifest::{FileSystemPermission, Limits, NetworkPermission, Permissions, PluginManifest};
+use crate::{
+    encoding::json5,
+    manifest::{FileSystemPermission, Limits, MANIFEST_FILENAME, NetworkPermission, Permissions, PluginManifest},
+};
 
-pub fn init_project(_yes: bool) -> Result<()> {
+pub fn init_project(yes: bool, directory: &Option<String>) -> Result<()> {
+    let dir_path = if let Some(dir) = directory {
+        Path::new(dir).to_path_buf()
+    } else {
+        std::env::current_dir()?
+    };
+
+    // If current directory already has a manifest file, skip initialization
+    let manifest_path = dir_path.join(MANIFEST_FILENAME);
+    if manifest_path.exists() {
+        return Err(anyhow::anyhow!("Plugin manifest already exists, skipping"));
+    }
+
     println!("{}", "🚀 Initializing Vayload plugin...".cyan().bold());
 
-    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
-    let plugin_name = current_dir.file_name().and_then(|n| n.to_str()).unwrap_or("my-project").to_string();
+    let plugin_name = dir_path.file_name().and_then(|n| n.to_str()).unwrap_or("my-project").to_string();
 
-    let name: String = Input::new()
-        .with_prompt("Plugin name")
-        .default(plugin_name)
-        .interact_text()
-        .context("Failed to read plugin name")?;
+    let name: String = if yes {
+        plugin_name.clone()
+    } else {
+        Input::new()
+            .with_prompt("Plugin name")
+            .default(plugin_name)
+            .interact_text()
+            .context("Failed to read plugin name")?
+    };
 
-    let description: String = Input::new()
-        .with_prompt("Description")
-        .default("A Vayload plugin".to_string())
-        .interact_text()
-        .context("Failed to read description")?;
+    let description: String = if yes {
+        "A Vayload plugin".to_string()
+    } else {
+        Input::new()
+            .with_prompt("Description")
+            .default("A Vayload plugin".to_string())
+            .interact_text()
+            .context("Failed to read description")?
+    };
 
-    let author: String = Input::new().with_prompt("Author").interact_text().context("Failed to read author")?;
+    let author: String = if yes {
+        "author".to_string()
+    } else {
+        Input::new()
+            .with_prompt("Author")
+            .default("author".to_string())
+            .interact_text()
+            .context("Failed to read author")?
+    };
 
     let mut project = PluginManifest::default();
     project.set_name(name.clone());
@@ -35,33 +65,37 @@ pub fn init_project(_yes: bool) -> Result<()> {
         Limits::default(),
     ));
 
-    let manifest_path = current_dir.join("plugin.json5");
-    fs::write(&manifest_path, serde_json::to_string_pretty(&project)?).context("Failed to write plugin.json5")?;
+    fs::write(&manifest_path, json5::to_string_pretty(&project)?).context("Failed to write manifest file")?;
 
-    let src_dir = current_dir.join("src");
+    let src_dir = dir_path.join("src");
     fs::create_dir_all(&src_dir).context("Failed to create src directory")?;
 
     let readme_content = format!(
         "# {}\n\n{}\n\n## Getting Started\n\n1. Run `vk install` to install dependencies\n2. Build your plugin\n3. Publish with `vk publish`\n",
         name, description
     );
-    fs::write(current_dir.join("README.md"), readme_content).context("Failed to write README.md")?;
-
-    let gitignore_content = "target/\n*.lock\n.vk/\n.env\n";
-    fs::write(current_dir.join(".vkignore"), gitignore_content).context("Failed to write .vkignore")?;
+    fs::write(dir_path.join("README.md"), readme_content).context("Failed to write README.md")?;
+    fs::write(dir_path.join(".vkignore"), "target/\n*.lock\n.vk/\n.env\n").context("Failed to write .vkignore")?;
 
     let entry_content = r#"
-       	--- @type HttpClient
-        local http = require("vayload:http")
+       	local kernel = require("vhost:kernel")
+        local http = require("vhost:http")
 
-        local response, err = http.get("https://jsonplaceholder.typicode.com/todos")
-        if err == nil and response then
-            print(response.body)
-        end
+        kernel.routes.get("/todos", function(req, res)
+            local response, err = http.get("https://jsonplaceholder.typicode.com/todos")
+            if err == nil and response then
+                res:send(response.body)
+            end
+        end)
+
+        kernel.routes.get("/hello", function(req, res)
+            res:send("Hello, World!")
+        end)
+
         "#
     .to_string();
 
-    fs::write(src_dir.join("src/main.lua"), entry_content).context("Failed to write entry file")?;
+    fs::write(src_dir.join("init.lua"), entry_content)?;
 
     println!("\n{}", "✅ Project initialized successfully!".green().bold());
     println!(
@@ -73,16 +107,16 @@ pub fn init_project(_yes: bool) -> Result<()> {
     println!(
         "{} Created {}",
         "📝".green(),
-        current_dir.join("README.md").display().to_string().cyan()
+        dir_path.join("README.md").display().to_string().cyan()
     );
     println!(
         "{} Created {}",
         "📝".green(),
-        current_dir.join(".vkignore").display().to_string().cyan()
+        dir_path.join(".vkignore").display().to_string().cyan()
     );
     println!(
         "Created Entry file in {}",
-        current_dir.join("src/main.lua").display().to_string().cyan()
+        dir_path.join("src/main.lua").display().to_string().cyan()
     );
 
     Ok(())

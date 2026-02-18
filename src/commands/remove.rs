@@ -3,31 +3,28 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+use crate::{
+    encoding::json5,
+    manifest::{MANIFEST_FILENAME, PluginManifest},
+};
+
 pub fn remove_dependency(package: &str) -> Result<()> {
+    let manifest_path = Path::new(MANIFEST_FILENAME);
+
     println!("{} Removing package {}", "🗑️".bold(), package.cyan());
-
-    let manifest_path = Path::new("plugin.json5");
-
-    if !manifest_path.exists() {
-        anyhow::bail!("No plugin.json5 found. Are you in a Vayload project?");
-    }
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read plugin.json5")?;
-    let mut manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
+    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
+    let mut manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
 
     let mut removed = false;
 
-    #[allow(clippy::collapsible_if)]
-    if let Some(deps) = manifest.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
-        if deps.remove(package).is_some() {
-            removed = true;
-            println!("{} Removed from dependencies", "✓".green());
-        }
+    if manifest.dependencies.remove(package).is_some() {
+        removed = true;
+        println!("{} Removed from dependencies", "✓".green());
     }
 
     #[allow(clippy::collapsible_if)]
-    if let Some(dev_deps) = manifest.get_mut("dev-dependencies").and_then(|d| d.as_object_mut()) {
-        if dev_deps.remove(package).is_some() {
+    if let Some(deps) = manifest.dev_dependencies.as_mut() {
+        if deps.remove(package).is_some() {
             removed = true;
             println!("{} Removed from dev-dependencies", "✓".green());
         }
@@ -37,9 +34,10 @@ pub fn remove_dependency(package: &str) -> Result<()> {
         anyhow::bail!("Package {} not found in dependencies", package);
     }
 
-    fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?).context("Failed to write plugin.json5")?;
+    fs::write(manifest_path, json5::to_string_pretty(&manifest)?).context("Failed to write manifest file")?;
 
-    let cache_dir = Path::new(".vk").join("node_modules").join(package);
+    // TODO: Remove package from cache directory, API is unstable
+    let cache_dir = Path::new(".vk").join("modules").join(package);
     if cache_dir.exists() {
         fs::remove_dir_all(&cache_dir).ok();
         println!("{} Removed cached files", "✓".green());

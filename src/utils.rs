@@ -8,6 +8,8 @@ use walkdir::{DirEntry, IntoIter as WalkDirIter, WalkDir};
 use zip::write::{FileOptions, SimpleFileOptions};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+use crate::manifest::VKIGNORE_FILENAME;
+
 pub struct FilteredWalker {
     root: PathBuf,
     walker: WalkDirIter,
@@ -17,10 +19,19 @@ pub struct FilteredWalker {
 
 impl FilteredWalker {
     pub fn new<P: AsRef<Path>>(root: P) -> Self {
+        let mut builder = GlobSetBuilder::new();
+
+        // core ignore patterns
+        let default_ignores = [".git/**", ".svn/**", ".hg/**", ".vk/**", ".vkcache/**"];
+
+        for pattern in default_ignores.iter() {
+            builder.add(Glob::new(pattern).expect("Error creando patrón default"));
+        }
+
         Self {
             root: root.as_ref().to_path_buf(),
-            walker: WalkDir::new(root).into_iter(),
-            builder: GlobSetBuilder::new(),
+            walker: WalkDir::new(&root).into_iter(),
+            builder,
             ignore_set: None,
         }
     }
@@ -100,7 +111,7 @@ pub fn create_zip(dir: &Path) -> Result<(Vec<u8>, String)> {
 
     let options: SimpleFileOptions = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    let vkignore = dir.join(".vkignore");
+    let vkignore = dir.join(VKIGNORE_FILENAME);
     let gitignore = dir.join(".gitignore");
 
     let mut walker = FilteredWalker::new(dir);

@@ -1,6 +1,6 @@
 [package]
 name = "vayload-kit"
-version = "0.1.0-alpha"
+version = "0.1.0-alpha.5"
 edition = "2024"
 authors = ["Alex Zweiter <szweiter@gmail.com>"]
 description = "CLI tool for developing and publishing plugins for Vayload CMS"
@@ -16,7 +16,6 @@ clap = { version = "4.5", features = ["derive", "env", "color"] }
 reqwest = { version = "0.11", features = ["blocking", "multipart", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-json5 = "0.4"
 zip = "8.0.0"
 sha2 = "0.10"
 hex = "0.4"
@@ -29,6 +28,7 @@ dirs = "5.0"
 config = "0.15.19"
 globset = "0.4.18"
 cfg-if = "1.0"
+indexmap = "2.13.0"
 
 url = {version ="2.5", optional = true}
 open = { version = "5.0", optional = true }

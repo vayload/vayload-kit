@@ -3,18 +3,16 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+use crate::encoding::json5;
 use crate::http_client::HttpClient;
+use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
 use crate::utils::parse_package;
 
 pub fn update_dependencies(package: Option<&str>, http_client: &HttpClient) -> Result<()> {
-    let manifest_path = Path::new("plugin.json5");
+    let manifest_path = Path::new(MANIFEST_FILENAME);
 
-    if !manifest_path.exists() {
-        anyhow::bail!("No plugin.json5 found. Are you in a Vayload project?");
-    }
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read plugin.json5")?;
-    let mut manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
+    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
+    let mut manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
 
     if let Some(pkg) = package {
         update_single_package(&mut manifest, pkg, http_client)?;
@@ -22,14 +20,14 @@ pub fn update_dependencies(package: Option<&str>, http_client: &HttpClient) -> R
         update_all_packages(&mut manifest, http_client)?;
     }
 
-    fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?).context("Failed to write plugin.json5")?;
+    fs::write(manifest_path, json5::to_string_pretty(&manifest)?).context("Failed to write manifest file")?;
 
     println!("{} Dependencies updated successfully!", "✅".green());
 
     Ok(())
 }
 
-fn update_single_package(manifest: &mut serde_json::Value, package: &str, http_client: &HttpClient) -> Result<()> {
+fn update_single_package(manifest: &mut PluginManifest, package: &str, http_client: &HttpClient) -> Result<()> {
     let (id, _) = parse_package(package);
 
     println!("{} Updating {}", "🔄".bold(), id.cyan());
@@ -38,34 +36,37 @@ fn update_single_package(manifest: &mut serde_json::Value, package: &str, http_c
 
     let mut updated = false;
 
-    #[allow(clippy::collapsible_if)]
-    if let Some(deps) = manifest.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
-        if let Some(dep) = deps.get_mut(&id) {
-            let old_version = dep.as_str().unwrap_or("*").to_string();
-            *dep = serde_json::json!(latest.clone());
-            println!(
-                "{} {}: {} -> {}",
-                "✓".green(),
-                id.cyan(),
-                old_version.yellow(),
-                latest.green()
-            );
-            updated = true;
-        }
+    // ---- dependencies ----
+    if let Some(old_version) = manifest.dependencies.get_mut(&id) {
+        let previous = old_version.clone();
+        *old_version = latest.clone();
+
+        println!(
+            "{} {}: {} -> {}",
+            "✓".green(),
+            id.cyan(),
+            previous.yellow(),
+            latest.green()
+        );
+
+        updated = true;
     }
 
+    // ---- dev_dependencies ----
     #[allow(clippy::collapsible_if)]
-    if let Some(dev_deps) = manifest.get_mut("dev-dependencies").and_then(|d| d.as_object_mut()) {
-        if let Some(dep) = dev_deps.get_mut(&id) {
-            let old_version = dep.as_str().unwrap_or("*").to_string();
-            *dep = serde_json::json!(latest.clone());
+    if let Some(dev_deps) = manifest.dev_dependencies.as_mut() {
+        if let Some(old_version) = dev_deps.get_mut(&id) {
+            let previous = old_version.clone();
+            *old_version = latest.clone();
+
             println!(
                 "{} {} (dev): {} -> {}",
                 "✓".green(),
                 id.cyan(),
-                old_version.yellow(),
+                previous.yellow(),
                 latest.green()
             );
+
             updated = true;
         }
     }
@@ -77,43 +78,48 @@ fn update_single_package(manifest: &mut serde_json::Value, package: &str, http_c
     Ok(())
 }
 
-fn update_all_packages(manifest: &mut serde_json::Value, http_client: &HttpClient) -> Result<()> {
+fn update_all_packages(manifest: &mut PluginManifest, http_client: &HttpClient) -> Result<()> {
     println!("{} Updating all dependencies...", "🔄".bold());
 
-    let deps_keys = ["dependencies", "dev-dependencies"];
+    for (pkg, version) in manifest.dependencies.iter_mut() {
+        update_version(pkg, version, http_client)?;
+    }
 
-    for key in deps_keys {
-        if let Some(deps) = manifest.get_mut(key).and_then(|d| d.as_object_mut()) {
-            let packages: Vec<String> = deps.keys().cloned().collect();
-
-            for pkg in packages {
-                if let Some(dep) = deps.get_mut(&pkg) {
-                    let current_version = dep.as_str().unwrap_or("*").to_string();
-
-                    if current_version != "*" {
-                        match fetch_latest_version(&pkg, http_client) {
-                            Ok(latest) => {
-                                if current_version != latest {
-                                    *dep = serde_json::json!(latest.clone());
-                                    println!(
-                                        "{} {}: {} -> {}",
-                                        "✓".green(),
-                                        pkg.cyan(),
-                                        current_version.yellow(),
-                                        latest.green()
-                                    );
-                                } else {
-                                    println!("{} {}: already at latest", "-".yellow(), pkg.cyan());
-                                }
-                            },
-                            Err(_) => {
-                                println!("{} {}: could not fetch latest version", "⚠".yellow(), pkg.cyan());
-                            },
-                        }
-                    }
-                }
-            }
+    if let Some(dev_deps) = manifest.dev_dependencies.as_mut() {
+        for (pkg, version) in dev_deps.iter_mut() {
+            update_version(pkg, version, http_client)?;
         }
+    }
+
+    Ok(())
+}
+
+fn update_version(pkg: &str, version: &mut String, http_client: &HttpClient) -> Result<()> {
+    let current = version.clone();
+
+    if current == "*" {
+        return Ok(());
+    }
+
+    match fetch_latest_version(pkg, http_client) {
+        Ok(latest) => {
+            if current != latest {
+                *version = latest.clone();
+
+                println!(
+                    "{} {}: {} -> {}",
+                    "✓".green(),
+                    pkg.cyan(),
+                    current.yellow(),
+                    latest.green()
+                );
+            } else {
+                println!("{} {}: already at latest", "-".yellow(), pkg.cyan());
+            }
+        },
+        Err(_) => {
+            println!("{} {}: could not fetch latest version", "⚠".yellow(), pkg.cyan());
+        },
     }
 
     Ok(())

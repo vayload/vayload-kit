@@ -11,8 +11,10 @@ use std::sync::Arc;
 
 mod commands;
 mod config;
+mod encoding;
 mod http_client;
 mod manifest;
+mod pre;
 mod types;
 mod utils;
 
@@ -84,6 +86,9 @@ enum Commands {
     Init {
         #[arg(short = 'y', long, help = "Skip prompts and use defaults")]
         yes: bool,
+
+        #[arg(long, help = "Directory to create the project in")]
+        directory: Option<String>,
     },
 
     #[cfg(feature = "full")]
@@ -167,13 +172,25 @@ fn run() -> Result<()> {
     let http_client = setup_client(&config)?;
 
     match cli.command {
-        Commands::Update { package } => commands::update::update_dependencies(package.as_deref(), &http_client)?,
-        Commands::Install { package, dir } => commands::install::install_plugin(&package, &dir, &http_client)?,
+        Commands::Update { package } => {
+            pre::ensure_manifest_exists()?;
+            commands::update::update_dependencies(package.as_deref(), &http_client)?
+        },
+        Commands::Install { package, dir } => {
+            pre::ensure_manifest_exists()?;
+            commands::install::install_plugin(&package, &dir, &http_client)?
+        },
         Commands::Publish { directory, access, dry_run } => {
             commands::publish::publish_plugin(&directory, access, dry_run, &http_client)?
         },
-        Commands::List { depth } => commands::list::list_dependencies(depth)?,
-        Commands::Audit => commands::audit::audit_dependencies(&http_client)?,
+        Commands::List { depth } => {
+            pre::ensure_manifest_exists()?;
+            commands::list::list_dependencies(depth)?
+        },
+        Commands::Audit => {
+            pre::ensure_manifest_exists()?;
+            commands::audit::audit_dependencies(&http_client)?
+        },
 
         #[cfg(feature = "full")]
         cmd @ (Commands::Add { .. }
@@ -212,10 +229,19 @@ fn handle_full_commands(command: Commands, client: &HttpClient) -> Result<()> {
     let auth_handler = auth::AuthCommands::new(km.clone(), client.clone());
 
     match command {
-        Commands::Init { yes } => commands::init::init_project(yes)?,
-        Commands::Add { package, dev } => commands::add::add_dependency(&package, dev, client)?,
-        Commands::Remove { package } => commands::remove::remove_dependency(&package)?,
-        Commands::Clean => commands::clean::clean_cache()?,
+        Commands::Init { yes, directory } => commands::init::init_project(yes, &directory)?,
+        Commands::Add { package, dev } => {
+            pre::ensure_manifest_exists()?;
+            commands::add::add_dependency(&package, dev, client)?
+        },
+        Commands::Remove { package } => {
+            pre::ensure_manifest_exists()?;
+            commands::remove::remove_dependency(&package)?
+        },
+        Commands::Clean => {
+            pre::ensure_manifest_exists()?;
+            commands::clean::clean_cache()?
+        },
         Commands::Login { username, password, oauth } => {
             if let Some(o) = oauth {
                 auth_handler.login_with_oauth(&o)?;

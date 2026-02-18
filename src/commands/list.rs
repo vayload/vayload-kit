@@ -1,17 +1,15 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::fs;
 use std::path::Path;
+use std::{collections::HashMap, fs};
+
+use crate::encoding::json5;
+use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
 
 pub fn list_dependencies(depth: Option<usize>) -> Result<()> {
-    let manifest_path = Path::new("plugin.json5");
-
-    if !manifest_path.exists() {
-        anyhow::bail!("No plugin.json5 found. Are you in a Vayload project?");
-    }
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read plugin.json5")?;
-    let manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
+    let manifest_path = Path::new(MANIFEST_FILENAME);
+    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
+    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
 
     println!("{}", "📦 Dependencies".bold().cyan());
     println!("{}", "═".repeat(40).bright_black());
@@ -19,8 +17,8 @@ pub fn list_dependencies(depth: Option<usize>) -> Result<()> {
 
     let max_depth = depth.unwrap_or(usize::MAX);
 
-    let has_deps = print_dependencies_section(&manifest, "dependencies", "", max_depth)?;
-    let has_dev_deps = print_dependencies_section(&manifest, "dev-dependencies", "dev ", max_depth)?;
+    let has_deps = print_dependencies_section(&manifest.dependencies, "", max_depth)?;
+    let has_dev_deps = print_dependencies_section(&manifest.dev_dependencies.unwrap_or_default(), "dev ", max_depth)?;
 
     if !has_deps && !has_dev_deps {
         println!("{} No dependencies found", "📭".yellow());
@@ -29,35 +27,32 @@ pub fn list_dependencies(depth: Option<usize>) -> Result<()> {
     Ok(())
 }
 
-fn print_dependencies_section(manifest: &serde_json::Value, key: &str, prefix: &str, max_depth: usize) -> Result<bool> {
+fn print_dependencies_section(deps: &HashMap<String, String>, prefix: &str, max_depth: usize) -> Result<bool> {
     let mut has_any = false;
 
-    #[allow(clippy::collapsible_if)]
-    if let Some(deps) = manifest.get(key).and_then(|d| d.as_object()) {
-        if deps.is_empty() {
-            let title = if prefix.is_empty() {
-                "dependencies".to_string()
-            } else {
-                format!("{}dependencies", prefix)
-            };
-            println!("{}", title.bold().green());
+    if !deps.is_empty() {
+        let title = if prefix.is_empty() {
+            "dependencies".to_string()
+        } else {
+            format!("{}dependencies", prefix)
+        };
+        println!("{}", title.bold().green());
 
-            for (name, version) in deps {
-                let version_str = version.as_str().unwrap_or("*");
-                println!(
-                    "{} {}",
-                    format!("{}{}", prefix, name).cyan(),
-                    format!("@{}", version_str).yellow()
-                );
+        for (name, version) in deps {
+            let version_str = version.as_str();
+            println!(
+                "{} {}",
+                format!("{}{}", prefix, name).cyan(),
+                format!("@{}", version_str).yellow()
+            );
 
-                if max_depth > 1 {
-                    print_transitive_deps(name, max_depth - 1, "  ");
-                }
-
-                has_any = true;
+            if max_depth > 1 {
+                print_transitive_deps(name, max_depth - 1, "  ");
             }
-            println!();
+
+            has_any = true;
         }
+        println!();
     }
 
     Ok(has_any)

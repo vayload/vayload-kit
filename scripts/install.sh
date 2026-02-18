@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Default values
 APP_NAME="vk"
-VERSION="v0.1.0-alpha.3"
+VERSION="v0.1.0-alpha.5"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -66,7 +66,7 @@ case "$OS" in
   windows) PLATFORM="pc-windows-msvc" ;;
 esac
 
-BINARY="$APP_NAME-$VERSION-$ARCH-$PLATFORM"
+BINARY="$APP_NAME-$ARCH-$PLATFORM"
 
 # Add extension for Windows
 if [ "$OS" = "windows" ]; then

@@ -1,14 +1,18 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::encoding::json5;
 use crate::http_client::HttpClient;
+use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
 use crate::utils::parse_package;
 
 pub fn add_dependency(package: &str, is_dev: bool, http_client: &HttpClient) -> Result<()> {
-    let (id, version) = parse_package(package);
+    let manifest_path = Path::new(MANIFEST_FILENAME);
 
+    let (id, version) = parse_package(package);
     print!("{} Adding {}", "📦".bold(), id.cyan());
     if let Some(v) = &version {
         print!("@{}", v.yellow());
@@ -18,34 +22,48 @@ pub fn add_dependency(package: &str, is_dev: bool, http_client: &HttpClient) -> 
     }
     println!();
 
-    let manifest_path = Path::new("plugin.json5");
+    let content = fs::read_to_string(manifest_path)?;
+    let mut manifest: PluginManifest = json5::from_str(&content)?;
 
-    if !manifest_path.exists() {
-        println!("{} No plugin.json5 found. Running init...", "⚠".yellow());
-        anyhow::bail!("Run 'vk init' first to create a project");
-    }
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read plugin.json5")?;
-    let mut manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
-
-    let deps_key = if is_dev { "dev-dependencies" } else { "dependencies" };
-    if manifest.get(deps_key).is_none() {
-        manifest[deps_key] = serde_json::json!({});
-    }
-
-    let deps = manifest.get_mut(deps_key).unwrap().as_object_mut().context("Failed to get dependencies object")?;
-
-    if let Some(v) = version {
-        deps.insert(id.clone(), serde_json::json!(v));
+    let deps: &mut HashMap<String, String> = if is_dev {
+        manifest.dev_dependencies.get_or_insert_with(HashMap::new)
     } else {
-        let latest_version = fetch_latest_version(&id, http_client)?;
-        deps.insert(id.clone(), serde_json::json!(latest_version));
-        println!("{} Latest version: {}", "📌".green(), latest_version.yellow());
+        &mut manifest.dependencies
+    };
+
+    #[allow(clippy::collapsible_if)]
+    if let Some(existing_version) = deps.get(&id) {
+        if let Some(ref req) = version {
+            if existing_version == req {
+                println!("Dependency already up to date.");
+                return Ok(());
+            }
+        }
     }
 
-    fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?).context("Failed to write plugin.json5")?;
+    let final_version = match version {
+        Some(v) => v,
+        None => {
+            let latest = fetch_latest_version(&id, http_client)?;
+            println!("Latest version: {}", latest);
+            latest
+        },
+    };
 
-    println!("{} Added {} to {}", "✅".green(), id.cyan(), deps_key.green());
+    deps.insert(id.clone(), final_version);
+
+    fs::write(manifest_path, json5::to_string_pretty(&manifest)?)?;
+
+    println!(
+        "{} Added {} to {}",
+        "✅".green(),
+        id.cyan(),
+        if is_dev {
+            "dev-dependencies".green()
+        } else {
+            "dependencies".green()
+        }
+    );
 
     Ok(())
 }

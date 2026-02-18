@@ -1,47 +1,20 @@
-name: Release
-
-on:
-    push:
-        branches:
-            - main
-        tags:
-            - "v*"
+name: Build and publish release packages
 
 permissions:
     contents: write
 
+on:
+    release:
+        types: [published]
+
 env:
     CARGO_TERM_COLOR: always
     APP_NAME: vk
-    VERSION: ${{ github.ref_name }}
+    VERSION: ${{ github.event.release.tag_name }}
 
 jobs:
-    test:
-        name: Tests & Lints
-        runs-on: ubuntu-latest
-
-        steps:
-            - uses: actions/checkout@v4
-
-            - uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: clippy, rustfmt
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-
-            - name: Format check
-              run: cargo fmt --all -- --check
-
-            - name: Clippy
-              run: cargo clippy --all-targets --all-features -- -D warnings
-
-            - name: Tests
-              run: cargo test --all-features
-
     build:
         name: Build binaries
-        needs: test
         runs-on: ${{ matrix.os }}
 
         strategy:
@@ -56,50 +29,61 @@ jobs:
 
         steps:
             - uses: actions/checkout@v4
-
             - uses: dtolnay/rust-toolchain@stable
-
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
-
             - name: Add target
               run: rustup target add ${{ matrix.target }}
 
+            # Build vk
             - name: Build vk (full)
               run: cargo build --release --bin vk --features full --target ${{ matrix.target }}
 
+            # Build vk-ci
             - name: Build vk-ci (minimal)
               run: cargo build --release --bin vk-ci --no-default-features --features minimal --target ${{ matrix.target }}
 
             # ---------- Linux / macOS ----------
-            - name: Package (Unix)
+            - name: Package vk (Unix)
               if: runner.os != 'Windows'
               run: |
-                  mkdir dist
+                  mkdir -p dist/vk
+                  tar -czf dist/vk/${APP_NAME}-${{ matrix.target }}.tar.gz \
+                    -C target/${{ matrix.target }}/release vk
+                  cd dist/vk
+                  sha256sum * > checksums-${{ matrix.target }}.txt
 
-                  cp target/${{ matrix.target }}/release/vk \
-                     dist/${APP_NAME}-${VERSION}-${{ matrix.target }}
-
-                  cp target/${{ matrix.target }}/release/vk-ci \
-                     dist/${APP_NAME}-ci-${VERSION}-${{ matrix.target }}
-
-                  strip dist/* || true
-
-                  cd dist
-                  sha256sum * > checksums-${VERSION}-${{ matrix.target }}.txt
+            - name: Package vk-ci (Unix)
+              if: runner.os != 'Windows'
+              run: |
+                  mkdir -p dist/vk-ci
+                  tar -czf dist/vk-ci/${APP_NAME}-ci-${{ matrix.target }}.tar.gz \
+                    -C target/${{ matrix.target }}/release vk-ci
+                  cd dist/vk-ci
+                  sha256sum * > checksums-${{ matrix.target }}.txt
 
             # ---------- Windows ----------
-            - name: Package (Windows)
+            - name: Package vk (Windows)
               if: runner.os == 'Windows'
               shell: powershell
               run: |
-                  New-Item -ItemType Directory -Force -Path dist
+                  New-Item -ItemType Directory -Force -Path dist\vk
+                  Copy-Item target\${{ matrix.target }}\release\vk.exe dist\vk\${APP_NAME}-${{ matrix.target }}.exe
+                  Compress-Archive -Path dist\vk\* -DestinationPath dist\vk\${APP_NAME}-${{ matrix.target }}.zip
+                  Get-FileHash dist\vk\${APP_NAME}-${{ matrix.target }}.zip -Algorithm SHA256 | ForEach-Object {
+                    "$($_.Hash) $($_.Name)" | Out-File dist\vk/checksums-${{ matrix.target }}.txt -Append -Encoding ascii
+                  }
 
-                  Copy-Item target\${{ matrix.target }}\release\vk.exe `
-                    dist\${{ env.APP_NAME }}-${{ env.VERSION }}-${{ matrix.target }}.exe
-
-                  Copy-Item target\${{ matrix.target }}\release\vk-ci.exe `
-                    dist\${{ env.APP_NAME }}-ci-${{ env.VERSION }}-${{ matrix.target }}.exe
+            - name: Package vk-ci (Windows)
+              if: runner.os == 'Windows'
+              shell: powershell
+              run: |
+                  New-Item -ItemType Directory -Force -Path dist\vk-ci
+                  Copy-Item target\${{ matrix.target }}\release\vk-ci.exe dist\vk-ci\${APP_NAME}-ci-${{ matrix.target }}.exe
+                  Compress-Archive -Path dist\vk-ci\* -DestinationPath dist\vk-ci\${APP_NAME}-ci-${{ matrix.target }}.zip
+                  Get-FileHash dist\vk-ci\${APP_NAME}-ci-${{ matrix.target }}.zip -Algorithm SHA256 | ForEach-Object {
+                    "$($_.Hash) $($_.Name)" | Out-File dist\vk-ci/checksums-${{ matrix.target }}.txt -Append -Encoding ascii
+                  }
 
             - name: Upload artifacts
               uses: actions/upload-artifact@v4
@@ -118,7 +102,7 @@ jobs:
               with:
                   path: dist
 
-            - name: Create GitHub Release
+            - name: Upload assets to Release
               uses: softprops/action-gh-release@v2
               with:
                   files: dist/**/*
