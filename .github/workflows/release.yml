@@ -1,11 +1,11 @@
-name: Build and publish release packages
+name: Build and Publish Release Packages
 
 permissions:
     contents: write
 
 on:
     release:
-        types: [published]
+        types: [published, prereleased]
 
 env:
     CARGO_TERM_COLOR: always
@@ -16,7 +16,6 @@ jobs:
     build:
         name: Build binaries
         runs-on: ${{ matrix.os }}
-
         strategy:
             matrix:
                 include:
@@ -35,11 +34,11 @@ jobs:
             - name: Add target
               run: rustup target add ${{ matrix.target }}
 
-            # Build vk
+            # Build vk (full)
             - name: Build vk (full)
               run: cargo build --release --bin vk --features full --target ${{ matrix.target }}
 
-            # Build vk-ci
+            # Build vk-ci (minimal)
             - name: Build vk-ci (minimal)
               run: cargo build --release --bin vk-ci --no-default-features --features minimal --target ${{ matrix.target }}
 
@@ -51,7 +50,7 @@ jobs:
                   tar -czf dist/vk/${APP_NAME}-${{ matrix.target }}.tar.gz \
                     -C target/${{ matrix.target }}/release vk
                   cd dist/vk
-                  sha256sum * > checksums-${{ matrix.target }}.txt
+                  sha256sum *.tar.gz > checksums-${{ matrix.target }}.txt
 
             - name: Package vk-ci (Unix)
               if: runner.os != 'Windows'
@@ -60,7 +59,7 @@ jobs:
                   tar -czf dist/vk-ci/${APP_NAME}-ci-${{ matrix.target }}.tar.gz \
                     -C target/${{ matrix.target }}/release vk-ci
                   cd dist/vk-ci
-                  sha256sum * > checksums-${{ matrix.target }}.txt
+                  sha256sum *.tar.gz > checksums-${{ matrix.target }}.txt
 
             # ---------- Windows ----------
             - name: Package vk (Windows)
@@ -85,6 +84,11 @@ jobs:
                     "$($_.Hash) $($_.Name)" | Out-File dist\vk-ci/checksums-${{ matrix.target }}.txt -Append -Encoding ascii
                   }
 
+            # Debug: confirmar archivos antes de subir
+            - name: List dist folder
+              run: ls -lR dist/
+
+            # Upload artifacts for release
             - name: Upload artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -95,14 +99,30 @@ jobs:
         name: Create GitHub Release
         needs: build
         runs-on: ubuntu-latest
-
         steps:
             - name: Download artifacts
               uses: actions/download-artifact@v4
               with:
                   path: dist
 
-            - name: Upload assets to Release
+            # Upload vk assets (Unix + Windows)
+            - name: Upload vk assets
               uses: softprops/action-gh-release@v2
               with:
-                  files: dist/**/*
+                  files: |
+                      dist/vk/*.tar.gz
+                      dist/vk/*.zip
+                      dist/vk/checksums-*.txt
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            # Upload vk-ci assets (Unix + Windows)
+            - name: Upload vk-ci assets
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: |
+                      dist/vk-ci/*.tar.gz
+                      dist/vk-ci/*.zip
+                      dist/vk-ci/checksums-*.txt
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
