@@ -33,10 +33,9 @@ pub fn publish_plugin(
         manifest.version.yellow()
     );
 
-    let (zip_data, _files_included, checksum) = create_zip(&dir_path).context("Failed to create ZIP archive")?;
+    let (zip_data, _checksum) = create_zip(&dir_path).context("Failed to create ZIP archive")?;
 
     println!("{} Package created ({})", "✓".green(), format_bytes(zip_data.len()));
-    println!("{} Checksum(SHA256): {}", "✓".green(), checksum.bright_black());
 
     if dry_run {
         println!("{} Dry run mode enabled, skipping upload, only intent", "⚠".yellow());

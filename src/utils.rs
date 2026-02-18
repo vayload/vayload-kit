@@ -86,16 +86,27 @@ impl Iterator for FilteredWalker {
     }
 }
 
-pub fn create_zip(dir: &Path) -> Result<(Vec<u8>, Vec<String>, String)> {
-    let cursor = std::io::Cursor::new(Vec::new());
+// Maximum allowed ZIP size for this implementation is 25 MB.
+// (Future: could be increased up to 250 MB for larger packages)
+const LIMIT_SIZE: usize = 25 * 1024 * 1024; // 25MB
+
+/// Creates a ZIP archive of the given directory.
+/// Returns a tuple of (ZIP bytes, SHA256 checksum).
+/// Respects .vkignore and .gitignore files, and enforces the size limit.
+pub fn create_zip(dir: &Path) -> Result<(Vec<u8>, String)> {
+    // Preallocate 10MB for the ZIP buffer for better performance
+    let cursor = std::io::Cursor::new(Vec::with_capacity(10 * 1024 * 1024));
     let mut zip = ZipWriter::new(cursor);
-    let mut files = Vec::new();
 
     let options: SimpleFileOptions = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
     let vkignore = dir.join(".vkignore");
     let gitignore = dir.join(".gitignore");
-    let mut walker = FilteredWalker::new(dir);
 
+    let mut walker = FilteredWalker::new(dir);
+    let mut total_size: usize = 0;
+
+    // Load ignore rules if the files exist
     if vkignore.exists() {
         walker.add_ignore_file(&vkignore);
     }
@@ -104,36 +115,72 @@ pub fn create_zip(dir: &Path) -> Result<(Vec<u8>, Vec<String>, String)> {
         walker.add_ignore_file(&gitignore);
     }
 
-    println!("\nFiles included:");
+    println!(
+        "\n{} Preparing package from: {}",
+        "📦".bold().blue(),
+        dir.display().to_string().bright_black()
+    );
+    println!("{}", "-".repeat(80));
+    println!("{:<2} {:<80} {:>10}", "", "File", "Size");
+    println!("{}", "-".repeat(80));
 
     for entry in walker {
         let path = entry.path();
 
-        if path.is_file() {
-            let name = path.strip_prefix(dir)?.to_str().context("invalid path")?;
+        // Protect against directory traversal attacks
+        if path.starts_with(dir) {
+            let file_size = path.metadata()?.len() as usize;
 
-            zip.start_file(name, options)?;
-            let mut file = File::open(path)?;
-            std::io::copy(&mut file, &mut zip)?;
+            // Enforce maximum ZIP size limit
+            if total_size + file_size > LIMIT_SIZE {
+                return Err(anyhow::anyhow!(
+                    "{} ZIP file size limit exceeded ({} bytes)",
+                    "⚠".yellow(),
+                    LIMIT_SIZE
+                ));
+            }
 
-            files.push(name.to_string());
+            if path.is_file() {
+                let name = path.strip_prefix(dir)?.to_str().context("invalid path")?;
 
-            println!("	{} {}", "✓".green(), name);
+                // Add file to ZIP
+                zip.start_file(name, options)?;
+                let mut file = File::open(path)?;
+                std::io::copy(&mut file, &mut zip)?;
+                total_size += file_size;
+
+                println!(
+                    "{} {:<80} {:>10}",
+                    "✓".green(),
+                    name,
+                    format_bytes(file_size).bright_black()
+                );
+            }
         }
     }
 
-    if files.is_empty() {
-        return Err(anyhow::anyhow!("No files to include in the package"));
+    if total_size == 0 {
+        return Err(anyhow::anyhow!("{} No files to include in the package", "⚠".yellow()));
     }
 
     let cursor = zip.finish()?;
     let buffer = cursor.into_inner();
 
+    println!("{}", "-".repeat(80));
+    println!(
+        "{} Original size: {}, Compressed size: {}",
+        "ℹ".bright_blue(),
+        format_bytes(total_size).bright_black(),
+        format_bytes(buffer.len()).bright_black()
+    );
+
     let mut hasher = Sha256::new();
     hasher.update(&buffer);
     let checksum = hex::encode(hasher.finalize());
 
-    Ok((buffer, files, checksum))
+    println!("{} SHA256 checksum: {}", "🔑".bright_black(), checksum);
+
+    Ok((buffer, checksum))
 }
 
 pub fn extract_zip(data: &[u8], dest_dir: &Path) -> Result<()> {
