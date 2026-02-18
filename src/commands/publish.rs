@@ -5,8 +5,9 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+use crate::encoding::json5;
 use crate::http_client::HttpClient;
-use crate::manifest::{PluginAccess, PluginManifest};
+use crate::manifest::{MANIFEST_FILENAME, PluginAccess, PluginManifest};
 use crate::utils::{create_zip, format_bytes};
 
 pub fn publish_plugin(
@@ -23,7 +24,16 @@ pub fn publish_plugin(
 
     let dir_path = dir_path.canonicalize().context("Failed to canonicalize directory path")?;
 
-    let manifest_path = dir_path.join("plugin.json5");
+    // Check if manifest file exists
+    let manifest_path = dir_path.join(MANIFEST_FILENAME);
+    if !manifest_path.exists() {
+        anyhow::bail!(
+            "Is not possible to publish a plugin without a manifest file: {}, {}",
+            MANIFEST_FILENAME,
+            "Please create a manifest file before publishing or verify the directory path."
+        );
+    }
+
     let manifest = read_manifest(&manifest_path)?;
 
     println!(
@@ -48,9 +58,9 @@ pub fn publish_plugin(
 }
 
 fn read_manifest(path: &Path) -> Result<PluginManifest> {
-    let content = fs::read_to_string(path).context("Plugin need plugin.json5 for publishing")?;
+    let content = fs::read_to_string(path).context("Plugin need manifest file for publishing")?;
 
-    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse plugin.json5")?;
+    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
 
     if manifest.version.is_empty() {
         anyhow::bail!("Manifest missing required field: version");

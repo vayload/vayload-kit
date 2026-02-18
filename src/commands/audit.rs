@@ -3,32 +3,28 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+use crate::encoding::json5;
 use crate::http_client::HttpClient;
+use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
 
 pub fn audit_dependencies(http_client: &HttpClient) -> Result<()> {
+    let manifest_path = Path::new(MANIFEST_FILENAME);
+
     println!("{}", "🔍 Scanning for vulnerabilities...".bold().cyan());
     println!();
 
-    let manifest_path = Path::new("plugin.json5");
-
-    if !manifest_path.exists() {
-        anyhow::bail!("No plugin.json5 found. Are you in a Vayload project?");
-    }
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read plugin.json5")?;
-    let manifest: serde_json::Value = json5::from_str(&content).context("Failed to parse plugin.json5")?;
+    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
+    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
 
     let mut all_deps: Vec<(String, String, bool)> = Vec::new();
 
-    if let Some(deps) = manifest.get("dependencies").and_then(|d| d.as_object()) {
-        for (name, version) in deps {
-            all_deps.push((name.clone(), version.as_str().unwrap_or("*").to_string(), false));
-        }
+    for (name, version) in manifest.dependencies {
+        all_deps.push((name.clone(), version.clone(), false));
     }
 
-    if let Some(dev_deps) = manifest.get("dev-dependencies").and_then(|d| d.as_object()) {
+    if let Some(dev_deps) = manifest.dev_dependencies {
         for (name, version) in dev_deps {
-            all_deps.push((name.clone(), version.as_str().unwrap_or("*").to_string(), true));
+            all_deps.push((name.clone(), version.clone(), true));
         }
     }
 
