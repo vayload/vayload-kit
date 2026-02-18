@@ -1,5 +1,5 @@
 # Vayload Kit 
-![Version](https://img.shields.io/badge/version-1.0.1--alpha.3-blue) ![Rust](https://img.shields.io/badge/rust-1.92.0-orange?logo=rust) ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue) ![GitHub stars](https://img.shields.io/github/stars/vayload/vayload-kit) ![GitHub issues](https://img.shields.io/github/issues/vayload/vayload-kit)
+![Version](https://img.shields.io/badge/version-1.0.1--alpha.5-blue) ![Rust](https://img.shields.io/badge/rust-1.92.0-orange?logo=rust) ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue) ![GitHub stars](https://img.shields.io/github/stars/vayload/vayload-kit) ![GitHub issues](https://img.shields.io/github/issues/vayload/vayload-kit)
 
 Vayload Kit (vk) is a modern, modular, and secure CLI for creating, managing, and publishing Vayload plugins.
 
