@@ -1,22 +1,15 @@
-<p align="center">
-  <img src="https://img.shields.io/github/v/release/alex-zweiter/vayload-kit?style=for-the-badge">
-  <img src="https://img.shields.io/github/stars/alex-zweiter/vayload-kit?style=for-the-badge">
-  <img src="https://img.shields.io/github/issues/alex-zweiter/vayload-kit?style=for-the-badge">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge">
-</p>
-
-# Vayload Kit (vk)
+# Vayload Kit 
+![Version](https://img.shields.io/badge/version-1.0.1--alpha.3-blue) ![Rust](https://img.shields.io/badge/rust-1.92.0-orange?logo=rust) ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue) ![GitHub stars](https://img.shields.io/github/stars/vayload/vayload-kit) ![GitHub issues](https://img.shields.io/github/issues/vayload/vayload-kit)
 
 Vayload Kit (vk) is a modern, modular, and secure CLI for creating, managing, and publishing Vayload plugins.
 
----
 
 ## Installation
 
 ### macOS / Linux / WSL / Git Bash
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex-zweiter/vayload-kit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/vayload/vayload-kit/main/scripts/install.sh | bash
 ```
 
 ---
@@ -24,13 +17,13 @@ curl -fsSL https://raw.githubusercontent.com/alex-zweiter/vayload-kit/main/insta
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/alex-zweiter/vayload-kit/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/vayload/vayload-kit/main/scripts/install.ps1 | iex
 ```
 
 If execution policy blocks the script:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/alex-zweiter/vayload-kit/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/vayload/vayload-kit/main/scripts/install.ps1 | iex"
 ```
 
 ---
@@ -39,7 +32,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/ale
 
 You can also download binaries directly from:
 
-[https://github.com/alex-zweiter/vayload-kit/releases](https://github.com/alex-zweiter/vayload-kit/releases)
+[https://github.com/vayload/vayload-kit/releases](https://github.com/vayload/vayload-kit/releases)
 
 ---
 
@@ -151,7 +144,7 @@ Display a tree of all installed dependencies.
 ## Links
 
 - Documentation: [https://vayload.dev/docs](https://vayload.dev/docs)
-- Issues: [https://github.com/alex-zweiter/vayload-kit/issues](https://github.com/alex-zweiter/vayload-kit/issues)
+- Issues: [https://github.com/vayload/vayload-kit/issues](https://github.com/vayload/vayload-kit/issues)
 
 ---
 
