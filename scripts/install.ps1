@@ -1,68 +1,75 @@
-# Install-VK.ps1
-# PowerShell script to install vk CLI with version/type arguments
-
-param(
-    [string]$AppName = "vk",      # Default binary
-    [string]$Version = "v0.1.0-alpha.3"  # Default version
-)
-
+#!/usr/bin/env pwsh
+# Requires PowerShell Core 7+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$INSTALL_DIR = "$HOME\.${AppName}"
-$BIN_DIR = "$INSTALL_DIR\bin"
+param(
+    [string]$Version = "v0.1.0-alpha.5",
+    [switch]$VK,
+    [switch]$VKCI
+)
 
-# Print header
-Write-Host "📦 Installing $AppName version $Version..." -ForegroundColor Cyan
+# Determine APP_NAME
+if ($VK) { $AppName = "vk" }
+elseif ($VKCI) { $AppName = "vk-ci" }
+else { $AppName = "vk" }
 
-# Check for curl
-if (-not (Get-Command curl -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Error: curl is required but not installed." -ForegroundColor Red
-    exit 1
-}
+$InstallDir = Join-Path $HOME ".$AppName"
+$BinDir = Join-Path $InstallDir "bin"
+if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
 
-# Detect OS and Architecture
+# Detect OS
+$OS = $PSVersionTable.OS
 if ($IsWindows) {
-    $OS = "windows"
-    $ARCH = (Get-CimInstance Win32_Processor).AddressWidth
-    $PLATFORM = "pc-windows-msvc"
+    $OSName = "windows"; $Ext = "zip"
 } elseif ($IsLinux) {
-    $OS = "linux"
-    $ARCH = (uname -m)
-    $PLATFORM = "unknown-linux-gnu"
+    $OSName = "linux"; $Ext = "tar.gz"
 } elseif ($IsMacOS) {
-    $OS = "macos"
-    $ARCH = (uname -m)
-    $PLATFORM = "apple-darwin"
+    $OSName = "macos"; $Ext = "tar.gz"
 } else {
-    Write-Host "❌ Unsupported OS" -ForegroundColor Red
-    exit 1
+    throw "Unsupported OS: $OS"
 }
 
-# Determine binary name
-$BINARY = "$AppName-$Version-$ARCH-$PLATFORM"
-if ($OS -eq "windows") { $BINARY += ".exe" }
+# Detect architecture
+$Arch = if ([Environment]::Is64BitOperatingSystem) { "x86_64" } else { throw "Unsupported architecture" }
 
-$DOWNLOAD_URL = "https://github.com/vayload/vayload-kit/releases/download/$Version/$BINARY"
-Write-Host "🌐 Downloading $DOWNLOAD_URL ..." -ForegroundColor Yellow
+# Platform string for releases
+$Platform = switch ($OSName) {
+    "windows" { "pc-windows-msvc" }
+    "linux"   { "unknown-linux-gnu" }
+    "macos"   { "apple-darwin" }
+}
 
-# Create bin directory
-if (-not (Test-Path $BIN_DIR)) { New-Item -ItemType Directory -Path $BIN_DIR | Out-Null }
-$DEST_PATH = Join-Path $BIN_DIR $BINARY
+$BinaryName = "$AppName-$Arch-$Platform.$Ext"
+$DownloadUrl = "https://github.com/vayload/vayload-kit/releases/download/$Version/$BinaryName"
 
-# Download file
-Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile $DEST_PATH -UseBasicParsing
+Write-Host "🌐 Downloading $DownloadUrl..."
+$TmpFile = [System.IO.Path]::GetTempFileName()
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpFile
 
-Write-Host "✅ Download complete: $DEST_PATH" -ForegroundColor Green
+Write-Host "📦 Extracting $BinaryName..."
+if ($Ext -eq "zip") {
+    Expand-Archive -LiteralPath $TmpFile -DestinationPath $BinDir -Force
+} else {
+    # Use tar for Linux/macOS
+    tar -xzf $TmpFile -C $BinDir
+}
+Remove-Item $TmpFile
 
-# Add to PATH if not already there
-$CurrentPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
-if (-not $CurrentPath.Split(";") -contains $BIN_DIR) {
-    [System.Environment]::SetEnvironmentVariable("PATH", "$BIN_DIR;$CurrentPath", "User")
-    Write-Host "🔧 Added $BIN_DIR to PATH. Restart your terminal to apply changes." -ForegroundColor Yellow
+# Make executables in Unix
+if (-not $IsWindows) {
+    Get-ChildItem -Path $BinDir -File | ForEach-Object { chmod +x $_.FullName }
+}
+
+# Add to PATH if not already
+$CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+if (-not $CurrentPath.Split([System.IO.Path]::PathSeparator) -contains $BinDir) {
+    [Environment]::SetEnvironmentVariable("PATH", "$BinDir$([System.IO.Path]::PathSeparator)$CurrentPath", "User")
+    Write-Host "✅ Added $BinDir to PATH for current user"
+    Write-Host "⚠ Restart your terminal to apply changes."
 }
 
 Write-Host ""
 Write-Host "🎉 Installation complete!"
 Write-Host "Run:"
-Write-Host "$AppName" -ForegroundColor Cyan
+Write-Host "$AppName"
