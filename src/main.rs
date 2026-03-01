@@ -14,7 +14,7 @@ mod config;
 mod dependency;
 mod http_client;
 mod lock;
-pub mod logger;
+mod logger;
 mod manifest;
 mod packager;
 mod pre;
@@ -128,6 +128,7 @@ enum Commands {
         package: String,
     },
 
+    #[cfg(feature = "full")]
     #[command(about = "Clean cache and build artifacts")]
     Clean,
 
