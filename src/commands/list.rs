@@ -1,15 +1,12 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;
 use std::{collections::HashMap, fs};
 
-use crate::encoding::json5;
-use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
+use crate::manifest::PluginManifest;
 
 pub fn list_dependencies(depth: Option<usize>) -> Result<()> {
-    let manifest_path = Path::new(MANIFEST_FILENAME);
-    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
-    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
+    let manifest = PluginManifest::load().map_err(|e| anyhow::anyhow!(e))?;
 
     println!("{}", "📦 Dependencies".bold().cyan());
     println!("{}", "═".repeat(40).bright_black());
@@ -70,7 +67,7 @@ fn print_transitive_deps(package: &str, depth: usize, indent: &str) {
 
     #[allow(clippy::collapsible_if)]
     if let Ok(content) = fs::read_to_string(lock_path) {
-        if let Ok(lock) = json5::from_str::<serde_json::Value>(&content) {
+        if let Ok(lock) = serde_json::from_str::<serde_json::Value>(&content) {
             if let Some(packages) = lock.get("packages").and_then(|p| p.as_array()) {
                 for pkg in packages {
                     if pkg.get("id").and_then(|i| i.as_str()) == Some(package) {

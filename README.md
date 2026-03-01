@@ -81,7 +81,7 @@ Add a dependency to the `vayload.toml` file and install it.
 
 ### `vk install`
 
-Install all dependencies listed in the `package.json5` manifest.
+Install all dependencies listed in the `plugin.json` manifest.
 
 **Options:**
 - `--offline`: Attempt to install only from local cache without network.

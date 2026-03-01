@@ -1,20 +1,14 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
-use std::fs;
-use std::path::Path;
 
-use crate::encoding::json5;
 use crate::http_client::HttpClient;
-use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
+use crate::manifest::PluginManifest;
 
 pub fn audit_dependencies(http_client: &HttpClient) -> Result<()> {
-    let manifest_path = Path::new(MANIFEST_FILENAME);
-
     println!("{}", "🔍 Scanning for vulnerabilities...".bold().cyan());
     println!();
 
-    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
-    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
+    let manifest = PluginManifest::load().map_err(|e| anyhow::anyhow!(e))?;
 
     let mut all_deps: Vec<(String, String, bool)> = Vec::new();
 

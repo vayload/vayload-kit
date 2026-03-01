@@ -16,6 +16,7 @@ jobs:
         name: Build binaries
         runs-on: ${{ matrix.os }}
         strategy:
+            fail-fast: false
             matrix:
                 include:
                     - os: ubuntu-latest
@@ -27,37 +28,46 @@ jobs:
 
         steps:
             - uses: actions/checkout@v4
-            - uses: dtolnay/rust-toolchain@stable
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+
             - name: Cache cargo
               uses: Swatinem/rust-cache@v2
-            - name: Add target
-              run: rustup target add ${{ matrix.target }}
+              with:
+                  key: ${{ matrix.target }}
 
-            # Build binaries
             - name: Build binaries
               run: |
                   cargo build --release --bin vk --features full --target ${{ matrix.target }}
                   cargo build --release --bin vk-ci --no-default-features --features minimal --target ${{ matrix.target }}
 
-            # ---------- Unix Packaging ----------
             - name: Package (Unix)
               if: runner.os != 'Windows'
               run: |
                   mkdir -p out
-                  tar -czf "out/${APP_NAME}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" vk
-                  tar -czf "out/${APP_NAME}-ci-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" vk-ci
-                  cd out && sha256sum *.tar.gz > "checksums-${{ matrix.target }}.txt"
+                  cp "target/${{ matrix.target }}/release/vk" "out/"
+                  cp "target/${{ matrix.target }}/release/vk-ci" "out/"
+                  cd out
+                  tar -czf "${{ env.APP_NAME }}-${{ matrix.target }}.tar.gz" vk
+                  tar -czf "${{ env.APP_NAME }}-ci-${{ matrix.target }}.tar.gz" vk-ci
+                  sha256sum *.tar.gz > "checksums-${{ matrix.target }}.txt"
+                  rm vk vk-ci
 
-            # ---------- Windows Packaging ----------
             - name: Package (Windows)
               if: runner.os == 'Windows'
-              shell: powershell
+              shell: pwsh
               run: |
                   New-Item -ItemType Directory -Force -Path out
-                  Compress-Archive -Path "target\${{ matrix.target }}\release\vk.exe" -DestinationPath "out\${env:APP_NAME}-${{ matrix.target }}.zip"
-                  Compress-Archive -Path "target\${{ matrix.target }}\release\vk-ci.exe" -DestinationPath "out\${env:APP_NAME}-ci-${{ matrix.target }}.zip"
+                  $releaseDir = "target\${{ matrix.target }}\release"
+
+                  Compress-Archive -Path "$releaseDir\vk.exe" -DestinationPath "out\${{ env.APP_NAME }}-${{ matrix.target }}.zip"
+                  Compress-Archive -Path "$releaseDir\vk-ci.exe" -DestinationPath "out\${{ env.APP_NAME }}-ci-${{ matrix.target }}.zip"
+
                   Get-FileHash out/*.zip -Algorithm SHA256 | ForEach-Object {
-                    "$($_.Hash) $(Split-Path $_.Path -Leaf)" | Out-File "out\checksums-${{ matrix.target }}.txt" -Append -Encoding ascii
+                    "$($_.Hash.ToLower()) $(Split-Path $_.Path -Leaf)" | Out-File "out\checksums-${{ matrix.target }}.txt" -Append -Encoding ascii
                   }
 
             - name: Upload intermediate artifacts
@@ -65,6 +75,7 @@ jobs:
               with:
                   name: artifacts-${{ matrix.target }}
                   path: out/*
+                  if-no-files-found: error
 
     release:
         name: Upload to GitHub Release
@@ -85,5 +96,7 @@ jobs:
                       all_artifacts/*.tar.gz
                       all_artifacts/*.zip
                       all_artifacts/checksums-*.txt
+                  fail_on_unmatched_files: true
+                  overwrite: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

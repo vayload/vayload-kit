@@ -2,9 +2,15 @@
 /// This struct contains all the necessary information about the plugin.
 ///
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_json::Serializer;
+use serde_json::ser::PrettyFormatter;
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
-pub const MANIFEST_FILENAME: &str = "plugin.json5";
+pub const MANIFEST_FILENAME: &str = "plugin.json";
 pub const VKIGNORE_FILENAME: &str = ".vkignore";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +36,9 @@ pub struct PluginManifest {
 
     pub permissions: Option<Permissions>,
     pub config: Option<PluginConfig>,
+
+    #[serde(skip)]
+    path: PathBuf,
 }
 
 impl Default for PluginManifest {
@@ -53,6 +62,7 @@ impl Default for PluginManifest {
             host_dependencies: None,
             permissions: Some(Permissions::default()),
             config: Some(PluginConfig::default()),
+            path: Path::new(MANIFEST_FILENAME).to_path_buf(),
         }
     }
 }
@@ -61,6 +71,76 @@ impl PluginManifest {
     pub fn set_name(&mut self, name: String) {
         self.name = name.clone().to_lowercase().replace(" ", "-");
         self.display_name = name;
+    }
+
+    pub fn load() -> Result<Self, String> {
+        let path = Path::new(MANIFEST_FILENAME);
+
+        if !path.is_file() {
+            return Err(format!("Manifest file '{}' not found", MANIFEST_FILENAME));
+        }
+
+        let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let mut manifest: Self = serde_json::from_str(&content).map_err(|e| format!("Invalid manifest: {e}"))?;
+
+        manifest.path = path.to_path_buf();
+        Ok(manifest)
+    }
+
+    pub fn load_from(manifest_path: &Path) -> Result<Self, String> {
+        if !manifest_path.is_file() {
+            return Err(format!(
+                "Manifest file '{}' not found in {}",
+                MANIFEST_FILENAME,
+                manifest_path.display()
+            ));
+        }
+
+        let content = fs::read_to_string(manifest_path).map_err(|e| e.to_string())?;
+        let mut manifest: Self = serde_json::from_str(&content).map_err(|e| format!("Invalid manifest: {e}"))?;
+
+        manifest.path = manifest_path.to_path_buf();
+        Ok(manifest)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.version.trim().is_empty() {
+            return Err("Manifest missing required field: version".into());
+        }
+
+        if self.name.trim().is_empty() {
+            return Err("Manifest missing required field: name".into());
+        }
+
+        if self.main.trim().is_empty() {
+            return Err("Manifest missing required field: main".into());
+        }
+
+        let manifest_dir = self.path.parent().ok_or("Invalid manifest path")?;
+
+        let main_path = manifest_dir.join(&self.main);
+
+        if !main_path.is_file() {
+            return Err(format!("Main entry file '{}' does not exist", main_path.display()));
+        }
+
+        Ok(())
+    }
+
+    pub fn set_path(&mut self, path: &Path) {
+        self.path = path.to_path_buf();
+    }
+
+    pub fn persist(&self) -> Result<(), String> {
+        let mut buf = Vec::new();
+
+        let formatter = PrettyFormatter::with_indent(b"    ");
+        let mut ser = Serializer::with_formatter(&mut buf, formatter);
+
+        self.serialize(&mut ser).map_err(|e| e.to_string())?;
+
+        let content = String::from_utf8(buf).map_err(|e| e.to_string())?;
+        fs::write(&self.path, content).map_err(|e| e.to_string())
     }
 }
 

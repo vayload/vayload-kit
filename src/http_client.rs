@@ -1,27 +1,59 @@
 use anyhow::{Context, Result};
+use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response, multipart};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{io, sync::Arc};
-use thiserror::Error;
 
+use crate::logger;
 use crate::types::{ErrorResponse, JsonResponse};
 
-#[derive(Debug, Error)]
+#[allow(unused)]
+#[derive(Debug)]
 pub enum ClientError {
-    #[error("HTTP transport error: {0}")]
-    Transport(#[from] reqwest::Error),
+    Network(reqwest::Error),
 
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
+    Serialization {
+        source: serde_json::Error,
+        body: String,
+    },
 
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
+    Api {
+        status: StatusCode,
+        message: String,
+        payload: Box<ErrorResponse>,
+    },
 
-    #[error("{message}")]
-    Api { message: String, payload: Box<ErrorResponse> },
+    UnexpectedResponse {
+        status: StatusCode,
+        body: String,
+        source: serde_json::Error,
+    },
 }
+
+impl fmt::Display for ClientError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClientError::Network(e) => write!(f, "Network error: {}", e),
+
+            ClientError::Serialization { source, .. } => {
+                write!(f, "Serialization error: {}", source)
+            },
+
+            ClientError::Api { status, message, .. } => {
+                write!(f, "API error ({}): {}", status, message)
+            },
+
+            ClientError::UnexpectedResponse { status, .. } => {
+                write!(f, "Unexpected response with status {}", status)
+            },
+        }
+    }
+}
+
+impl std::error::Error for ClientError {}
 
 type AuthFn = Arc<dyn Fn() -> Option<String> + Send + Sync>;
 
@@ -72,17 +104,19 @@ impl HttpClient {
         let request = self.client.get(self.url(path));
         let request = self.with_auth(request);
 
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
         let status = response.status();
 
         if status.is_success() {
             Ok(response)
         } else {
-            let body = response.text()?;
+            let body = response.text().map_err(ClientError::Network)?;
 
-            let parsed: ErrorResponse = serde_json::from_str(&body).map_err(ClientError::Serialization)?;
+            let parsed: ErrorResponse = serde_json::from_str(&body)
+                .map_err(|e| ClientError::Serialization { source: e, body: body.clone() })?;
 
             Err(ClientError::Api {
+                status,
                 message: parsed.error.message.clone(),
                 payload: Box::new(parsed),
             })
@@ -95,9 +129,9 @@ impl HttpClient {
     {
         let request = self.client.get(self.url(path));
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     pub fn post<T, B>(&self, path: &str, body: &B) -> Result<T, ClientError>
@@ -107,9 +141,9 @@ impl HttpClient {
     {
         let request = self.client.post(self.url(path)).json(body);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -120,9 +154,9 @@ impl HttpClient {
     {
         let request = self.client.post(self.url(path)).form(form);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     pub fn post_multipart<T>(&self, path: &str, form: multipart::Form) -> Result<T, ClientError>
@@ -131,9 +165,9 @@ impl HttpClient {
     {
         let request = self.client.post(self.url(path)).multipart(form);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -144,9 +178,9 @@ impl HttpClient {
     {
         let request = self.client.put(self.url(path)).json(body);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -157,9 +191,9 @@ impl HttpClient {
     {
         let request = self.client.put(self.url(path)).form(form);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -170,9 +204,9 @@ impl HttpClient {
     {
         let request = self.client.patch(self.url(path)).json(body);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -183,9 +217,9 @@ impl HttpClient {
     {
         let request = self.client.patch(self.url(path)).form(form);
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     #[allow(dead_code)]
@@ -195,9 +229,9 @@ impl HttpClient {
     {
         let request = self.client.delete(self.url(path));
         let request = self.with_auth(request);
-        let response = request.send()?;
+        let response = request.send().map_err(ClientError::Network)?;
 
-        Self::parse_json(response)
+        self.parse_json(response)
     }
 
     fn url(&self, path: &str) -> String {
@@ -208,31 +242,59 @@ impl HttpClient {
         )
     }
 
-    fn parse_json<T>(response: Response) -> Result<T, ClientError>
+    pub fn parse_json<T>(&self, response: Response) -> Result<T, ClientError>
     where
         T: DeserializeOwned,
     {
         let status = response.status();
-        let body = response.text()?;
+
+        let body = match response.text() {
+            Ok(text) => text,
+            Err(err) => {
+                logger::error(&format!("Network error while reading response body: {}", err));
+                return Err(ClientError::Network(err));
+            },
+        };
 
         if status.is_success() {
-            if let Ok(wrapped) = serde_json::from_str::<JsonResponse<T>>(&body) {
-                return Ok(wrapped.data);
+            match self.try_parse_success::<T>(&body) {
+                Ok(val) => Ok(val),
+                Err(err) => {
+                    logger::error(&format!(
+                        "Serialization error parsing successful response: {} | body: {}",
+                        err, body
+                    ));
+
+                    Err(ClientError::Serialization { source: err, body })
+                },
             }
-
-            if let Ok(direct) = serde_json::from_str::<T>(&body) {
-                return Ok(direct);
-            }
-
-            let data = serde_json::from_str::<T>(&body).map_err(ClientError::Serialization)?;
-
-            Ok(data)
         } else {
-            let parsed: ErrorResponse = serde_json::from_str(&body)?;
-            Err(ClientError::Api {
-                message: parsed.error.message.clone(),
-                payload: Box::new(parsed),
-            })
+            match serde_json::from_str::<ErrorResponse>(&body) {
+                Ok(parsed) => {
+                    logger::error(&format!("API error ({}): {}", status, parsed.error.message));
+                    Err(ClientError::Api {
+                        status,
+                        message: parsed.error.message.clone(),
+                        payload: Box::new(parsed),
+                    })
+                },
+                Err(err) => {
+                    logger::error(&format!(
+                        "Unexpected response parsing error: {} | status: {} | body: {}",
+                        err, status, body
+                    ));
+                    Err(ClientError::UnexpectedResponse { status, body, source: err })
+                },
+            }
         }
+    }
+
+    fn try_parse_success<T>(&self, body: &str) -> Result<T, serde_json::Error>
+    where
+        T: DeserializeOwned,
+    {
+        serde_json::from_str::<JsonResponse<T>>(body)
+            .map(|wrapped| wrapped.data)
+            .or_else(|_| serde_json::from_str::<T>(body))
     }
 }

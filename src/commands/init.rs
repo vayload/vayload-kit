@@ -1,19 +1,15 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::Input;
-use std::{fs, path::Path};
+use std::fs;
 
 use crate::{
-    encoding::json5,
     manifest::{FileSystemPermission, Limits, MANIFEST_FILENAME, NetworkPermission, Permissions, PluginManifest},
+    utils,
 };
 
 pub fn init_project(yes: bool, directory: &Option<String>) -> Result<()> {
-    let dir_path = if let Some(dir) = directory {
-        Path::new(dir).to_path_buf()
-    } else {
-        std::env::current_dir()?
-    };
+    let dir_path = utils::get_directory(directory).map_err(|e| anyhow::anyhow!(e))?;
 
     // If current directory already has a manifest file, skip initialization
     let manifest_path = dir_path.join(MANIFEST_FILENAME);
@@ -65,10 +61,12 @@ pub fn init_project(yes: bool, directory: &Option<String>) -> Result<()> {
         Limits::default(),
     ));
 
-    fs::write(&manifest_path, json5::to_string_pretty(&project)?).context("Failed to write manifest file")?;
+    project.set_path(&manifest_path);
+
+    project.persist().map_err(|e| anyhow::anyhow!("Failed to write manifest file: {}", e))?;
 
     let src_dir = dir_path.join("src");
-    fs::create_dir_all(&src_dir).context("Failed to create src directory")?;
+    fs::create_dir_all(dir_path.join("src")).context("Failed to create src directory")?;
 
     let readme_content = format!(
         "# {}\n\n{}\n\n## Getting Started\n\n1. Run `vk install` to install dependencies\n2. Build your plugin\n3. Publish with `vk publish`\n",

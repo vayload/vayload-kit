@@ -11,9 +11,12 @@ use std::sync::Arc;
 
 mod commands;
 mod config;
-mod encoding;
+mod dependency;
 mod http_client;
+mod lock;
+pub mod logger;
 mod manifest;
+mod packager;
 mod pre;
 mod types;
 mod utils;
@@ -35,6 +38,10 @@ use crate::{config::AppConfig, http_client::HttpClient, manifest::PluginAccess};
     about = "Vayload Kit (vk) - Development kit for creating and managing Vayload plugins"
 )]
 struct AppCli {
+    /// Increase verbosity
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -47,6 +54,16 @@ enum Commands {
         package: Option<String>,
     },
 
+    #[command(about = "Package the plugin for upload without publishing it")]
+    Pack {
+        #[arg(
+            short,
+            long,
+            help = "Directory of the plugin to pack (defaults to current directory)"
+        )]
+        dir: Option<String>,
+    },
+
     #[command(about = "Publish a plugin to the registry")]
     Publish {
         #[arg(
@@ -54,7 +71,7 @@ enum Commands {
             long,
             help = "Directory of the plugin to publish (defaults to current directory)"
         )]
-        directory: Option<String>,
+        dir: Option<String>,
 
         #[arg(short, long, value_parser = ["public", "private"], help = "Set package visibility")]
         access: Option<PluginAccess>,
@@ -63,13 +80,16 @@ enum Commands {
         dry_run: bool,
     },
 
-    #[command(about = "Install a plugin")]
+    #[command(about = "Install dependencies from plugin.json")]
     Install {
-        #[arg(help = "Name of the plugin to install")]
-        package: String,
-
-        #[arg(long, default_value = "./plugins", help = "Target directory for installation")]
+        #[arg(long, default_value = ".deps", help = "Target directory for installation")]
         dir: String,
+
+        #[arg(long, help = "Install only production dependencies (default behavior)")]
+        prod: bool,
+
+        #[arg(long, help = "Include dev dependencies")]
+        dev: bool,
     },
 
     #[command(about = "Scan dependencies for known vulnerabilities")]
@@ -88,16 +108,16 @@ enum Commands {
         yes: bool,
 
         #[arg(long, help = "Directory to create the project in")]
-        directory: Option<String>,
+        dir: Option<String>,
     },
 
     #[cfg(feature = "full")]
-    #[command(about = "Add a dependency to the project")]
+    #[command(about = "Add dependencies to the project")]
     Add {
-        #[arg(help = "Package name (optionally with version, e.g. serde@1.0.0)")]
-        package: String,
+        #[arg(required = true, help = "Package names (e.g., json@1.0.0 http-client@2.0.0)")]
+        packages: Vec<String>,
 
-        #[arg(long, help = "Add as a development dependency")]
+        #[arg(long, short, help = "Add as development dependencies")]
         dev: bool,
     },
 
@@ -108,9 +128,17 @@ enum Commands {
         package: String,
     },
 
-    #[cfg(feature = "full")]
     #[command(about = "Clean cache and build artifacts")]
     Clean,
+
+    #[command(about = "View vk logs")]
+    Log {
+        #[arg(short, long, help = "Number of lines to show (default: 50)")]
+        lines: Option<usize>,
+
+        #[arg(short, long, help = "Follow log output in real-time")]
+        follow: bool,
+    },
 
     #[cfg(feature = "full")]
     #[command(about = "Authenticate with the Vayload registry")]
@@ -141,8 +169,11 @@ enum Commands {
 }
 
 fn main() {
+    logger::init_logging();
+
     println!();
     if let Err(err) = run() {
+        logger::error(err.to_string().as_str());
         eprintln!("{} {}\n", "error:".red().bold(), err);
         std::process::exit(1);
     }
@@ -159,7 +190,7 @@ fn run() -> Result<()> {
         .header(AnsiColor::BrightBlack.on_default())
         .usage(AnsiColor::BrightBlack.on_default())
         .literal(orange.on_default())
-        .placeholder(AnsiColor::BrightBlack.on_default()) // más sobrio
+        .placeholder(AnsiColor::BrightBlack.on_default())
         .error(AnsiColor::BrightRed.on_default() | Effects::BOLD)
         .valid(AnsiColor::BrightGreen.on_default())
         .invalid(AnsiColor::BrightRed.on_default());
@@ -176,12 +207,14 @@ fn run() -> Result<()> {
             pre::ensure_manifest_exists()?;
             commands::update::update_dependencies(package.as_deref(), &http_client)?
         },
-        Commands::Install { package, dir } => {
+        Commands::Install { dir, prod, dev } => {
             pre::ensure_manifest_exists()?;
-            commands::install::install_plugin(&package, &dir, &http_client)?
+            let include_dev = dev && !prod;
+            commands::install::install_all(Some(&dir), include_dev, &http_client)?;
         },
-        Commands::Publish { directory, access, dry_run } => {
-            commands::publish::publish_plugin(&directory, access, dry_run, &http_client)?
+        Commands::Pack { dir } => commands::pack::pack_plugin(&dir)?,
+        Commands::Publish { dir, access, dry_run } => {
+            commands::publish::publish_plugin(&dir, access, dry_run, &http_client)?
         },
         Commands::List { depth } => {
             pre::ensure_manifest_exists()?;
@@ -190,6 +223,14 @@ fn run() -> Result<()> {
         Commands::Audit => {
             pre::ensure_manifest_exists()?;
             commands::audit::audit_dependencies(&http_client)?
+        },
+
+        Commands::Log { lines, follow } => {
+            if follow {
+                commands::log::follow_log()?;
+            } else {
+                commands::log::run_log_command(lines)?
+            }
         },
 
         #[cfg(feature = "full")]
@@ -229,10 +270,10 @@ fn handle_full_commands(command: Commands, client: &HttpClient) -> Result<()> {
     let auth_handler = auth::AuthCommands::new(km.clone(), client.clone());
 
     match command {
-        Commands::Init { yes, directory } => commands::init::init_project(yes, &directory)?,
-        Commands::Add { package, dev } => {
+        Commands::Init { yes, dir } => commands::init::init_project(yes, &dir)?,
+        Commands::Add { packages, dev } => {
             pre::ensure_manifest_exists()?;
-            commands::add::add_dependency(&package, dev, client)?
+            commands::add::add_dependency(&packages, dev, client)?
         },
         Commands::Remove { package } => {
             pre::ensure_manifest_exists()?;

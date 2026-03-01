@@ -1,27 +1,8 @@
 use serde::Deserialize;
 
-#[allow(unused)]
-#[derive(Debug, Deserialize)]
-pub struct UploadResponse {
-    pub success: bool,
-    pub message: String,
-    pub id: String,
-    pub version: String,
-    pub checksum: String,
-}
-
-#[derive(Debug)]
-pub struct DownloadMeta {
-    pub id: String,
-    pub version: String,
-    pub checksum: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct JsonResponse<T> {
     pub data: T,
-    #[allow(unused)]
-    pub meta: Option<JsonResponseMeta>,
 }
 
 #[allow(unused)]
