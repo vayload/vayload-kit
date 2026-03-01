@@ -1,18 +1,13 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
-use std::fs;
-use std::path::Path;
 
-use crate::encoding::json5;
 use crate::http_client::HttpClient;
-use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
+use crate::manifest::PluginManifest;
 use crate::utils::parse_package;
 
+// !TODO: missing update lock file
 pub fn update_dependencies(package: Option<&str>, http_client: &HttpClient) -> Result<()> {
-    let manifest_path = Path::new(MANIFEST_FILENAME);
-
-    let content = fs::read_to_string(manifest_path).context("Failed to read manifest file")?;
-    let mut manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
+    let mut manifest = PluginManifest::load().map_err(|e| anyhow::anyhow!(e))?;
 
     if let Some(pkg) = package {
         update_single_package(&mut manifest, pkg, http_client)?;
@@ -20,7 +15,7 @@ pub fn update_dependencies(package: Option<&str>, http_client: &HttpClient) -> R
         update_all_packages(&mut manifest, http_client)?;
     }
 
-    fs::write(manifest_path, json5::to_string_pretty(&manifest)?).context("Failed to write manifest file")?;
+    manifest.persist().map_err(|e| anyhow::anyhow!(e))?;
 
     println!("{} Dependencies updated successfully!", "✅".green());
 
@@ -129,9 +124,9 @@ fn fetch_latest_version(id: &str, http_client: &HttpClient) -> Result<String> {
     #[derive(serde::Deserialize)]
     struct PackageInfo {
         #[serde(rename = "latestVersion")]
-        latest_version: String,
+        latest_stable_version: String,
     }
 
-    let info = http_client.get::<PackageInfo>(&format!("/packages/{}", id))?;
-    Ok(info.latest_version)
+    let info = http_client.get::<PackageInfo>(&format!("/{}/info", id))?;
+    Ok(info.latest_stable_version)
 }

@@ -1,6 +1,8 @@
 pub mod audit;
 pub mod install;
 pub mod list;
+pub mod log;
+pub mod pack;
 pub mod publish;
 pub mod update;
 

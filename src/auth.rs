@@ -206,7 +206,7 @@ impl AuthCommands {
 
         println!("{}", "Waiting for authorization...".cyan());
 
-        let (code, state) = self.receive_oauth_callback(&listener, &state)?;
+        let (code, state) = self.receive_oauth_callback(&listener, &state, &code_challenge)?;
 
         println!("{}", "✓ Authorization received!".green());
         println!("{}", "Exchanging code for tokens...".cyan());
@@ -234,7 +234,12 @@ impl AuthCommands {
         rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()
     }
 
-    fn receive_oauth_callback(&self, listener: &TcpListener, expected_state: &str) -> Result<(String, String)> {
+    fn receive_oauth_callback(
+        &self,
+        listener: &TcpListener,
+        expected_state: &str,
+        code_challenge: &str,
+    ) -> Result<(String, String)> {
         listener.set_nonblocking(true).context("Failed to set non-blocking mode")?;
 
         let start = std::time::Instant::now();
@@ -251,6 +256,9 @@ impl AuthCommands {
                     let mut request_line = String::new();
 
                     reader.read_line(&mut request_line).context("Failed to read OAuth callback request")?;
+                    if request_line.contains("favicon.ico") {
+                        continue;
+                    }
 
                     let path = request_line.split_whitespace().nth(1).context("Invalid HTTP request format")?;
 
@@ -284,6 +292,10 @@ impl AuthCommands {
                     if expected_state != state.state {
                         self.send_error_response(&mut stream, "State mismatch - possible CSRF attack")?;
                         anyhow::bail!("State mismatch - possible CSRF attack");
+                    }
+                    if code_challenge != state.code_challenge {
+                        self.send_error_response(&mut stream, "Code challenge mismatch - possible CSRF attack")?;
+                        anyhow::bail!("Code challenge mismatch - possible CSRF attack");
                     }
 
                     self.send_success_response(&mut stream)?;

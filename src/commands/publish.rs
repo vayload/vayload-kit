@@ -1,14 +1,15 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::blocking::multipart::{Form, Part};
 use serde::Deserialize;
-use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 
-use crate::encoding::json5;
 use crate::http_client::HttpClient;
 use crate::manifest::{MANIFEST_FILENAME, PluginAccess, PluginManifest};
-use crate::utils::{create_zip, format_bytes};
+use crate::packager::PluginPackager;
+use crate::utils;
 
 pub fn publish_plugin(
     directory: &Option<String>,
@@ -16,12 +17,7 @@ pub fn publish_plugin(
     dry_run: bool,
     http_client: &HttpClient,
 ) -> Result<()> {
-    let dir_path = if let Some(dir) = directory {
-        Path::new(dir).to_path_buf()
-    } else {
-        std::env::current_dir()?
-    };
-
+    let dir_path = utils::get_directory(directory).map_err(|e| anyhow::anyhow!(e))?;
     let dir_path = dir_path.canonicalize().context("Failed to canonicalize directory path")?;
 
     // Check if manifest file exists
@@ -34,7 +30,10 @@ pub fn publish_plugin(
         );
     }
 
-    let manifest = read_manifest(&manifest_path)?;
+    println!("Manifest path: {}", manifest_path.display());
+    let manifest = PluginManifest::load_from(&manifest_path);
+    let manifest = manifest.map_err(|e| anyhow::anyhow!(e))?;
+    manifest.validate().map_err(|e| anyhow::anyhow!(e))?;
 
     println!(
         "{} Publishing {}@{}",
@@ -43,60 +42,53 @@ pub fn publish_plugin(
         manifest.version.yellow()
     );
 
-    let (zip_data, _checksum) = create_zip(&dir_path).context("Failed to create ZIP archive")?;
+    let packager = PluginPackager::new();
+    let filename = format!("{}@{}.tar.gz", manifest.name, manifest.version);
+    let package_path = std::env::temp_dir().join(filename.clone());
 
-    println!("{} Package created ({})", "✓".green(), format_bytes(zip_data.len()));
+    packager.pack(&dir_path, &package_path, true)?;
 
     if dry_run {
         println!("{} Dry run mode enabled, skipping upload, only intent", "⚠".yellow());
     } else {
-        upload_plugin(&manifest.name, &zip_data, access.unwrap_or_default(), http_client)?;
+        upload_plugin(&filename, &package_path, access.unwrap_or_default(), http_client)?;
         println!("{} Published successfully!", "✅".green());
     }
 
     Ok(())
 }
 
-fn read_manifest(path: &Path) -> Result<PluginManifest> {
-    let content = fs::read_to_string(path).context("Plugin need manifest file for publishing")?;
-
-    let manifest: PluginManifest = json5::from_str(&content).context("Failed to parse manifest file")?;
-
-    if manifest.version.is_empty() {
-        anyhow::bail!("Manifest missing required field: version");
-    }
-    if manifest.name.is_empty() {
-        anyhow::bail!("Manifest missing required field: name");
-    }
-
-    Ok(manifest)
-}
-
 #[derive(Debug, Deserialize)]
 pub struct PluginResponse {
     pub name: String,
-    pub slug: String,
 }
 
-fn upload_plugin(id: &str, zip_data: &[u8], access: PluginAccess, http_client: &HttpClient) -> Result<()> {
+fn upload_plugin(_filename: &str, path: &PathBuf, access: PluginAccess, http_client: &HttpClient) -> Result<()> {
+    let spinner = ProgressBar::new_spinner();
     let form = Form::new()
-        .part(
-            "file",
-            Part::bytes(zip_data.to_vec()).file_name(format!("{}.zip", id)).mime_str("application/zip")?,
-        )
+        .part("file", Part::file(path)?)
         .part("access", Part::bytes(access.as_str().to_string().into_bytes()));
 
+    spinner.set_style(ProgressStyle::with_template("{spinner:.cyan} {msg}")?);
+    spinner.set_message("Uploading plugin...");
+    spinner.enable_steady_tick(Duration::from_millis(100));
+
     let response = http_client.post_multipart::<PluginResponse>("/plugins/publish", form);
+
+    spinner.finish_and_clear();
 
     match response {
         Ok(data) => {
             println!(
-                "Plugin '{}' published successfuly with id: {}",
-                data.name.bold().blue(),
-                data.slug.cyan()
+                "{} Plugin '{}' published successfully",
+                "✓".bright_purple(),
+                data.name.bold().blue()
             );
             Ok(())
         },
-        Err(e) => Err(e.into()),
+        Err(e) => {
+            println!("{} Upload failed", "✗".bright_red());
+            Err(e.into())
+        },
     }
 }

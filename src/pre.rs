@@ -4,7 +4,6 @@ use std::path::Path;
 use crate::manifest::MANIFEST_FILENAME;
 
 /// This package contains the pre-run command for the vayload-kit commands;
-///
 pub fn ensure_manifest_exists() -> Result<()> {
     let manifest_path = Path::new(MANIFEST_FILENAME);
 

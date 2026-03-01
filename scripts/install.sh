@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="vk"
-VERSION="v0.1.0-alpha.5"
+VERSION="v0.1.0-alpha.6"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
