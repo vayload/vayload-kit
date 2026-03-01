@@ -61,6 +61,7 @@ pub fn log(level: &str, message: &str) {
     eprintln!("[{}] {}", level, message);
 }
 
+#[allow(unused)]
 pub fn info(message: &str) {
     log("INFO", message);
 }
@@ -69,6 +70,7 @@ pub fn error(message: &str) {
     log("ERROR", message);
 }
 
+#[allow(unused)]
 pub fn warn(message: &str) {
     log("WARN", message);
 }
