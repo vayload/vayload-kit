@@ -150,5 +150,8 @@ fn fetch_package_info(id: &str, http_client: &HttpClient) -> Option<String> {
         latest_stable_version: String,
     }
 
-    http_client.get::<InfoResponse>(&format!("/{}/info", id)).ok().map(|r| r.latest_stable_version)
+    http_client
+        .get::<InfoResponse>(&format!("/plugins/{}/info", id))
+        .ok()
+        .map(|r| r.latest_stable_version)
 }

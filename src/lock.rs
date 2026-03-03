@@ -19,7 +19,7 @@ pub struct LockedPackage {
     pub dep_type: DependencyType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DependencyType {
     #[serde(rename = "production")]
     Production,
@@ -106,5 +106,64 @@ impl LockFile {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lock_file_default() {
+        let lock = LockFile::default();
+        assert_eq!(lock.version, 1);
+        assert!(lock.packages.is_empty());
+    }
+
+    #[test]
+    fn test_add_package() {
+        let mut lock = LockFile::default();
+        lock.add_package("test-pkg", "1.0.0", "sha256-abc123", false);
+
+        assert!(lock.has_package("test-pkg", "1.0.0"));
+        assert_eq!(lock.get_integrity("test-pkg", "1.0.0"), Some("sha256-abc123"));
+    }
+
+    #[test]
+    fn test_add_dev_package() {
+        let mut lock = LockFile::default();
+        lock.add_package("test-pkg", "1.0.0", "sha256-abc123", true);
+
+        let pkg = lock.get_package("test-pkg", "1.0.0").unwrap();
+        assert_eq!(pkg.dep_type, DependencyType::Development);
+    }
+
+    #[test]
+    fn test_remove_package() {
+        let mut lock = LockFile::default();
+        lock.add_package("test-pkg", "1.0.0", "sha256-abc123", false);
+        lock.remove_package("test-pkg", "1.0.0");
+
+        assert!(!lock.has_package("test-pkg", "1.0.0"));
+    }
+
+    #[test]
+    fn test_get_any_version() {
+        let mut lock = LockFile::default();
+        lock.add_package("test-pkg", "1.0.0", "sha256-abc", false);
+        lock.add_package("test-pkg", "2.0.0", "sha256-def", false);
+
+        let version = lock.get_any_version("test-pkg");
+        assert!(version.is_some());
+    }
+
+    #[test]
+    fn test_list_packages() {
+        let mut lock = LockFile::default();
+        lock.add_package("pkg-a", "1.0.0", "sha256-aaa", false);
+        lock.add_package("pkg-b", "2.0.0", "sha256-bbb", true);
+
+        let packages = lock.list_packages();
+        assert_eq!(packages.len(), 2);
     }
 }

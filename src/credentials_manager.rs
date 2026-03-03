@@ -57,11 +57,10 @@ pub struct CredentialManager {
 
 impl CredentialManager {
     pub fn new() -> Result<Self> {
-        let config_dir = dirs::config_dir()
-            .context("No se pudo encontrar el directorio de configuración")?
-            .join("vayload-kit");
+        let config_dir = dirs::config_dir().ok_or(anyhow::anyhow!("Config directory not found"))?;
+        let config_dir = config_dir.join("vayload-kit");
 
-        fs::create_dir_all(&config_dir).context("Error al crear el directorio de configuración")?;
+        fs::create_dir_all(&config_dir)?;
 
         Ok(Self { config_dir })
     }

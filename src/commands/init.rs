@@ -93,9 +93,10 @@ pub fn init_project(yes: bool, directory: &Option<String>) -> Result<()> {
         "#
     .to_string();
 
-    fs::write(src_dir.join("init.lua"), entry_content)?;
+    let entry_file = dir_path.join("src/main.lua").canonicalize().map_err(|e| anyhow::anyhow!(e))?;
+    fs::write(&entry_file, entry_content)?;
 
-    println!("\n{}", "✅ Project initialized successfully!".green().bold());
+    println!("\n{}", "✅ Project init successfully!\n".green().bold());
     println!(
         "{} Created {}",
         "📄".green(),
@@ -112,10 +113,8 @@ pub fn init_project(yes: bool, directory: &Option<String>) -> Result<()> {
         "📝".green(),
         dir_path.join(".vkignore").display().to_string().cyan()
     );
-    println!(
-        "Created Entry file in {}",
-        dir_path.join("src/main.lua").display().to_string().cyan()
-    );
+
+    println!("\nCreated Entry file in {}", entry_file.display().to_string().cyan());
 
     Ok(())
 }

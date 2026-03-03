@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use colored::Colorize;
 use flate2::read::GzDecoder;
@@ -14,7 +14,8 @@ use tempfile::NamedTempFile;
 
 use crate::http_client::HttpClient;
 use crate::lock::LockFile;
-use crate::manifest::{MANIFEST_FILENAME, PluginManifest};
+use crate::logger;
+use crate::manifest::{self, MANIFEST_FILENAME, PluginManifest};
 
 #[derive(Debug, Clone)]
 pub struct Dependency {
@@ -48,6 +49,8 @@ pub struct DependencyGraph {
     installed: HashSet<String>,
     failed: HashSet<String>,
 }
+
+const DEPS_DIR: &str = "vk_plugins";
 
 impl DependencyGraph {
     pub fn new() -> Self {
@@ -185,9 +188,11 @@ impl DependencyInstaller {
 
         while depth < max_depth {
             let candidate = current.join(crate::lock::LOCK_FILENAME);
+            let manifest_root = current.join(manifest::MANIFEST_FILENAME);
 
-            if candidate.exists() {
-                return Ok(Some((candidate, current.to_path_buf())));
+            // Find the lock file by looking for the manifest first, in same level
+            if manifest_root.exists() {
+                return Ok(Some((candidate, current.join(DEPS_DIR).to_path_buf())));
             }
 
             match current.parent() {
@@ -379,17 +384,17 @@ fn install_single(
     deps_dir: &Path,
     http_client: &HttpClient,
 ) -> Result<InstallSingleResult> {
-    fs::create_dir_all(deps_dir).context("Failed to create .deps directory")?;
+    fs::create_dir_all(deps_dir)?;
 
     let (integrity, resolved_version, temp_path) = download_and_verify(name, Some(version), http_client)?;
 
     let pkg_dir = deps_dir.join(format!("{}@{}", name, resolved_version));
 
     if pkg_dir.exists() {
-        fs::remove_dir_all(&pkg_dir).context("Failed to remove old version")?;
+        fs::remove_dir_all(&pkg_dir)?;
     }
 
-    fs::create_dir_all(&pkg_dir).context("Failed to create package directory")?;
+    fs::create_dir_all(&pkg_dir)?;
 
     extract_tar_gz(&temp_path, &pkg_dir)?;
 
@@ -438,26 +443,39 @@ fn download_and_verify(id: &str, version: Option<&str>, http_client: &HttpClient
         None => download_meta.latest_version.clone(),
     };
 
-    let response = http_client.get_raw(&download_meta.artifact.url)?;
+    let client = reqwest::blocking::Client::builder()
+    	.user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .build()?;
+
+    let response = client.get(&download_meta.artifact.url).send()?;
+    let response_status = response.status();
+    if !response_status.is_success() {
+        let body = response.text().unwrap_or_default();
+        logger::error(&format!("fails to download artifact: {}", body));
+        anyhow::bail!("fails to download artifact. Status: {} → {}", response_status, body);
+    }
 
     let expected_integrity = &download_meta.artifact.integrity;
     let algorithm = &download_meta.artifact.algorithm;
 
-    let mut temp_file = NamedTempFile::new().context("Failed to create temp file")?;
+    let mut temp_file = NamedTempFile::new()?;
     let mut hasher = Sha256::new();
     let mut chunk = [0u8; 64 * 1024];
     let mut reader = response;
 
     loop {
-        let n = reader.read(&mut chunk).context("Failed to read response")?;
+        let n = reader.read(&mut chunk).map_err(|e| anyhow::anyhow!("Failed to read response: {}", e))?;
         if n == 0 {
             break;
         }
-        temp_file.write_all(&chunk[..n]).context("Failed to write to temp file")?;
+        temp_file.write_all(&chunk[..n])?;
         hasher.update(&chunk[..n]);
     }
 
-    temp_file.flush().context("Failed to flush temp file")?;
+    temp_file.flush()?;
 
     let computed_hash = match algorithm.as_str() {
         "sha256" => format!("sha256-{}", URL_SAFE_NO_PAD.encode(hasher.finalize())),
@@ -482,20 +500,20 @@ fn download_and_verify(id: &str, version: Option<&str>, http_client: &HttpClient
 }
 
 fn extract_tar_gz(archive_path: &Path, dest_dir: &Path) -> Result<()> {
-    let file = fs::File::open(archive_path).context("Failed to open archive")?;
+    let file = fs::File::open(archive_path)?;
     let tar = GzDecoder::new(file);
     let mut archive = Archive::new(tar);
 
-    for entry in archive.entries().context("Failed to read tar entries")? {
-        let mut entry = entry.context("Error reading tar entry")?;
-        entry.unpack_in(dest_dir).context("Error extracting file")?;
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        entry.unpack_in(dest_dir)?;
     }
 
     Ok(())
 }
 
 fn read_deps_from_manifest(path: &Path) -> Result<Vec<(String, String)>> {
-    let content = fs::read_to_string(path).context("Failed to read plugin.json")?;
+    let content = fs::read_to_string(path).map_err(|e| anyhow::anyhow!("Failed to read plugin.json: {}", e))?;
     let manifest: PluginManifest = serde_json::from_str(&content)?;
 
     let mut deps = Vec::new();

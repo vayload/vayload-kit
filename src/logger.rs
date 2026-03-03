@@ -57,8 +57,6 @@ pub fn log(level: &str, message: &str) {
             let _ = file.write_all(log_entry.as_bytes());
         }
     }
-
-    eprintln!("[{}] {}", level, message);
 }
 
 #[allow(unused)]

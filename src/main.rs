@@ -73,7 +73,7 @@ enum Commands {
         )]
         dir: Option<String>,
 
-        #[arg(short, long, value_parser = ["public", "private"], help = "Set package visibility")]
+        #[arg(short, long, help = "Set package visibility")]
         access: Option<PluginAccess>,
 
         #[arg(long = "dry-run", help = "Simulate publishing without uploading")]
@@ -302,6 +302,7 @@ fn handle_full_commands(command: Commands, client: &HttpClient) -> Result<()> {
 fn setup_interactive_http_client(api_url: String, km: Arc<CredentialManager>) -> Result<HttpClient> {
     let mut http_client = HttpClient::new(api_url)?;
     let fresh_client = http_client.clone();
+    // const REFRESH_TOKEN_KEY: &str = "__refresh_token__";
 
     http_client.set_auth_fn(move || {
         use crate::auth::OAuthDataResponse;
@@ -332,4 +333,49 @@ fn setup_interactive_http_client(api_url: String, km: Arc<CredentialManager>) ->
     });
 
     Ok(http_client)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        AppCli::command().debug_assert();
+    }
+
+    #[test]
+    fn test_parse_install_defaults() {
+        let args = vec!["vk", "install"];
+        let cli = AppCli::parse_from(args);
+        match cli.command {
+            Commands::Install { dir, prod, dev } => {
+                assert_eq!(dir, ".deps");
+                assert!(!prod);
+                assert!(!dev);
+            },
+            _ => panic!("Expected Install command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_publish_with_flags() {
+        let args = vec!["vk", "publish", "--dry-run", "--access", "public"];
+        let cli = AppCli::parse_from(args);
+        match cli.command {
+            Commands::Publish { dry_run, access, .. } => {
+                assert!(dry_run);
+                assert!(matches!(access, Some(PluginAccess::Public)));
+            },
+            _ => panic!("Expected Publish command"),
+        }
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn test_login_conflicts() {
+        let result = AppCli::try_parse_from(vec!["vk", "login", "-u", "user", "--oauth", "github"]);
+        assert!(result.is_err());
+    }
 }

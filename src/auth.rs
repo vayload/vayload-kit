@@ -14,7 +14,8 @@ use url::Url;
 use crate::credentials_manager::{CredentialManager, RawCredentials};
 use crate::http_client::HttpClient;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ClientType {
     #[default]
     Web,
@@ -32,8 +33,7 @@ impl ClientType {
     }
 }
 
-#[allow(unused)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OAuthState {
     pub origin_uri: String,
     pub redirect_uri: Option<String>,
@@ -73,12 +73,10 @@ pub struct LoginPasswordRequest {
     pub password: String,
 }
 
-#[allow(unused)]
 #[derive(Debug, Deserialize)]
 pub struct LoginPasswordResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub token_type: String,
     pub expires_in: i64,
 }
 
@@ -183,13 +181,13 @@ impl AuthCommands {
         let code_challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
 
         let request_url = format!("auth/oauth/{provider}");
-        let request_body = serde_json::json!({
-            "state": state,
-            "code_challenge": code_challenge,
-            "redirect_uri": callback_url,
-            "origin_uri": "http://localhost:8080",
-            "client_type": "cli"
-        });
+        let request_body = OAuthState {
+            client_type: ClientType::Cli,
+            origin_uri: "http://localhost:8080".to_string(),
+            redirect_uri: Some(callback_url),
+            state: state.clone(),
+            code_challenge: code_challenge.clone(),
+        };
 
         let auth_response = self.http_client.post::<OAuthAuthorizationResponse, _>(&request_url, &request_body)?;
 

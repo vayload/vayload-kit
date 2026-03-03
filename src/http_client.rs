@@ -1,14 +1,15 @@
 use anyhow::{Context, Result};
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response, multipart};
+use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::logger;
 use crate::types::{ErrorResponse, JsonResponse};
+use crate::{logger, utils};
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -66,16 +67,22 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(base_url: impl Into<String>) -> Result<Self> {
-        let client =
-            Client::builder().timeout(Duration::from_secs(240)).build().context("Failed to build HTTP client")?;
+        let client = Client::builder()
+            .default_headers(Self::base_headers())
+            .timeout(Duration::from_secs(240))
+            .build()
+            .context("Failed to build HTTP client")?;
 
         Ok(Self { base_url: base_url.into(), client, auth_fn: None })
     }
 
     #[allow(dead_code)]
     pub fn new_with_token(base_url: impl Into<String>, token: String) -> Result<Self> {
-        let client =
-            Client::builder().timeout(Duration::from_secs(240)).build().context("Failed to build HTTP client")?;
+        let client = Client::builder()
+            .default_headers(Self::base_headers())
+            .timeout(Duration::from_secs(240))
+            .build()
+            .context("Failed to build HTTP client")?;
 
         let token = Arc::new(token);
         let token_clone = token.clone();
@@ -100,6 +107,7 @@ impl HttpClient {
         rb
     }
 
+    #[allow(dead_code)]
     pub fn get_raw(&self, path: &str) -> Result<Response, ClientError> {
         let request = self.client.get(self.url(path));
         let request = self.with_auth(request);
@@ -242,6 +250,14 @@ impl HttpClient {
         )
     }
 
+    fn base_headers() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, utils::build_user_agent().as_str().parse().unwrap());
+        headers.insert("X-Vayload-Platform", "CLI".parse().unwrap());
+        headers.insert("X-Vayload-Request", "true".parse().unwrap());
+        headers
+    }
+
     pub fn parse_json<T>(&self, response: Response) -> Result<T, ClientError>
     where
         T: DeserializeOwned,
@@ -257,8 +273,8 @@ impl HttpClient {
         };
 
         if status.is_success() {
-            match self.try_parse_success::<T>(&body) {
-                Ok(val) => Ok(val),
+            match self.try_parse_success::<JsonResponse<T>>(&body) {
+                Ok(val) => Ok(val.data),
                 Err(err) => {
                     logger::error(&format!(
                         "Serialization error parsing successful response: {} | body: {}",
